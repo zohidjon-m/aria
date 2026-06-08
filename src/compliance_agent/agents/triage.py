@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..domain import AgentResult, Claim, SourceRef
+from ..domain import AgentResult, Claim, ReasoningItem, SourceRef
 from ..utils import clamp, new_id
 from .common import collect_evidence
 from .typologies import TypologyEngine
@@ -32,7 +32,17 @@ class TriageAgent:
 
         severity = str(alert.get("severity") or rule.get("severity") or "medium").lower()
         score = SEVERITY_POINTS.get(severity, 12)
-        reasoning = [f"Alert severity contributes {score} points."]
+        reasoning = [
+            ReasoningItem(
+                statement=f"Alert severity contributes {score} points.",
+                source_refs=self._non_empty_refs(
+                    [
+                        SourceRef("alerts", str(alert["alert_id"])),
+                        self._optional_rule_ref(rule),
+                    ]
+                ),
+            )
+        ]
 
         amount = float(transaction.get("amount_usd") or 0)
         avg_amount = float(pattern.get("avg_transaction") or 0)
@@ -41,26 +51,73 @@ class TriageAgent:
             if ratio >= 5:
                 score += 20
                 reasoning.append(
-                    f"Transaction amount is {ratio:.1f}x the customer's average."
+                    ReasoningItem(
+                        statement=(
+                            f"Transaction amount is {ratio:.1f}x the customer's average."
+                        ),
+                        source_refs=[
+                            SourceRef("transactions", str(transaction["transaction_id"])),
+                            SourceRef("transaction_patterns", str(pattern["pattern_id"])),
+                        ],
+                    )
                 )
             elif ratio >= 2:
                 score += 10
                 reasoning.append(
-                    f"Transaction amount is {ratio:.1f}x the customer's average."
+                    ReasoningItem(
+                        statement=(
+                            f"Transaction amount is {ratio:.1f}x the customer's average."
+                        ),
+                        source_refs=[
+                            SourceRef("transactions", str(transaction["transaction_id"])),
+                            SourceRef("transaction_patterns", str(pattern["pattern_id"])),
+                        ],
+                    )
                 )
             else:
-                reasoning.append("Transaction amount is close to the customer's baseline.")
+                reasoning.append(
+                    ReasoningItem(
+                        statement="Transaction amount is close to the customer's baseline.",
+                        source_refs=[
+                            SourceRef("transactions", str(transaction["transaction_id"])),
+                            SourceRef("transaction_patterns", str(pattern["pattern_id"])),
+                        ],
+                    )
+                )
 
         for signal in signals:
             score += signal.score
-            reasoning.append(f"{signal.typology}: {signal.rationale}")
+            reasoning.append(
+                ReasoningItem(
+                    statement=f"{signal.typology}: {signal.rationale}",
+                    source_refs=signal.source_refs,
+                )
+            )
 
         if len(prior_alerts) >= 3:
             score += 12
-            reasoning.append(f"Customer has {len(prior_alerts)} prior alerts.")
+            reasoning.append(
+                ReasoningItem(
+                    statement=f"Customer has {len(prior_alerts)} prior alerts.",
+                    source_refs=[
+                        SourceRef("alerts", str(alert["alert_id"]))
+                        for alert in prior_alerts
+                        if alert.get("alert_id") is not None
+                    ][:5],
+                )
+            )
         elif prior_alerts:
             score += 5
-            reasoning.append(f"Customer has {len(prior_alerts)} prior alert(s).")
+            reasoning.append(
+                ReasoningItem(
+                    statement=f"Customer has {len(prior_alerts)} prior alert(s).",
+                    source_refs=[
+                        SourceRef("alerts", str(alert["alert_id"]))
+                        for alert in prior_alerts
+                        if alert.get("alert_id") is not None
+                    ][:5],
+                )
+            )
 
         score = clamp(score)
         recommendation = self._recommend(score, severity, signals)
@@ -101,6 +158,14 @@ class TriageAgent:
         evidence_factor = min(0.15, evidence_count / 100)
         score_factor = min(0.7, abs(score - 35) / 100 + abs(score - 70) / 200)
         return round(clamp(0.55 + evidence_factor + score_factor, 0, 0.95), 2)
+
+    def _optional_rule_ref(self, rule: dict[str, Any]) -> SourceRef | None:
+        if not rule or rule.get("rule_id") is None:
+            return None
+        return SourceRef("compliance_rules", str(rule["rule_id"]))
+
+    def _non_empty_refs(self, refs: list[SourceRef | None]) -> list[SourceRef]:
+        return [ref for ref in refs if ref is not None]
 
     def _claims(self, context: dict[str, Any], signals: list[Any]) -> list[Claim]:
         alert = context["alert"]

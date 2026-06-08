@@ -32,6 +32,12 @@ class FakeBankSourceRepository:
         self._case_contexts = {
             9001: self._case_context(),
         }
+        self._graph_transactions: list[dict[str, Any]] = []
+        self._graph_accounts: dict[int, dict[str, Any]] = {}
+        self._graph_customers: dict[int, dict[str, Any]] = {}
+        self._graph_countries: dict[str, dict[str, Any]] = {}
+        self._graph_alerts: list[dict[str, Any]] = []
+        self._graph_cases: list[dict[str, Any]] = []
 
     def get_alert_context(self, alert_id: int) -> dict[str, Any]:
         try:
@@ -120,6 +126,136 @@ class FakeBankSourceRepository:
             merged.setdefault("amount_usd", candidate_amount)
             rows.append(merged)
         return rows[: max(1, min(100, int(max_rows)))]
+
+    def get_money_flow_edges(
+        self,
+        account_ids: list[int],
+        anchor_transaction_id: int,
+        max_rows: int,
+    ) -> list[dict[str, Any]]:
+        bounded_account_ids = {int(account_id) for account_id in account_ids[:100]}
+        if not bounded_account_ids:
+            return []
+        bounded_max_rows = max(1, min(100, int(max_rows)))
+        transactions = [
+            tx
+            for tx in self._all_transactions()
+            if tx.get("counterparty_account_id") is not None
+            and (
+                int(tx.get("account_id") or 0) in bounded_account_ids
+                or int(tx.get("counterparty_account_id") or 0) in bounded_account_ids
+            )
+        ]
+        transactions.sort(
+            key=lambda tx: (
+                tx.get("transaction_id") != anchor_transaction_id,
+                str(tx.get("created_at") or ""),
+                int(tx.get("transaction_id") or 0),
+            )
+        )
+        return [
+            self._money_flow_edge_record(tx)
+            for tx in transactions[:bounded_max_rows]
+        ]
+
+    def _all_transactions(self) -> list[dict[str, Any]]:
+        transactions: dict[int, dict[str, Any]] = {}
+        for context in self._alert_contexts.values():
+            for tx in context.get("recent_transactions") or []:
+                if tx.get("transaction_id") is not None:
+                    transactions[int(tx["transaction_id"])] = deepcopy(tx)
+        for tx in self._graph_transactions:
+            if tx.get("transaction_id") is not None:
+                transactions[int(tx["transaction_id"])] = deepcopy(tx)
+        return list(transactions.values())
+
+    def _all_accounts(self) -> dict[int, dict[str, Any]]:
+        accounts: dict[int, dict[str, Any]] = {}
+        for context in self._alert_contexts.values():
+            account = context.get("account") or {}
+            if account.get("account_id") is not None:
+                accounts[int(account["account_id"])] = deepcopy(account)
+        for account_id, account in self._graph_accounts.items():
+            accounts[int(account_id)] = deepcopy(account)
+        return accounts
+
+    def _all_customers(self) -> dict[int, dict[str, Any]]:
+        customers: dict[int, dict[str, Any]] = {}
+        for context in self._alert_contexts.values():
+            customer = context.get("customer") or {}
+            if customer.get("customer_id") is not None:
+                customers[int(customer["customer_id"])] = deepcopy(customer)
+        for customer_id, customer in self._graph_customers.items():
+            customers[int(customer_id)] = deepcopy(customer)
+        return customers
+
+    def _all_countries(self) -> dict[str, dict[str, Any]]:
+        countries: dict[str, dict[str, Any]] = {}
+        for context in self._alert_contexts.values():
+            country = context.get("destination_country") or {}
+            if country.get("country_code"):
+                countries[str(country["country_code"])] = deepcopy(country)
+        for country_code, country in self._graph_countries.items():
+            countries[str(country_code)] = deepcopy(country)
+        return countries
+
+    def _all_alerts(self) -> list[dict[str, Any]]:
+        alerts = []
+        for context in self._alert_contexts.values():
+            alerts.append(deepcopy(context["alert"]))
+            alerts.extend(deepcopy(context.get("prior_alerts") or []))
+        alerts.extend(deepcopy(self._graph_alerts))
+        return alerts
+
+    def _all_cases(self) -> list[dict[str, Any]]:
+        cases = [deepcopy(context["case"]) for context in self._case_contexts.values()]
+        cases.extend(deepcopy(self._graph_cases))
+        return cases
+
+    def _money_flow_edge_record(self, transaction: dict[str, Any]) -> dict[str, Any]:
+        accounts = self._all_accounts()
+        customers = self._all_customers()
+        countries = self._all_countries()
+        source_account = accounts.get(int(transaction.get("account_id") or 0), {})
+        counterparty_account = accounts.get(
+            int(transaction.get("counterparty_account_id") or 0),
+            {},
+        )
+        source_customer = customers.get(int(source_account.get("customer_id") or 0), {})
+        counterparty_customer = customers.get(
+            int(counterparty_account.get("customer_id") or 0),
+            {},
+        )
+        country = countries.get(str(transaction.get("destination_country") or ""), {})
+        linked_alerts = [
+            alert
+            for alert in self._all_alerts()
+            if alert.get("transaction_id") == transaction.get("transaction_id")
+        ]
+        linked_customer_ids = {
+            value
+            for value in (
+                source_customer.get("customer_id"),
+                counterparty_customer.get("customer_id"),
+            )
+            if value is not None
+        }
+        linked_cases = [
+            case
+            for case in self._all_cases()
+            if case.get("customer_id") in linked_customer_ids
+            and case.get("status") in {"open", "under_review", "escalated"}
+        ]
+        return {
+            "transaction": deepcopy(transaction),
+            "source_account": deepcopy(source_account),
+            "source_customer": deepcopy(source_customer),
+            "counterparty_account": deepcopy(counterparty_account),
+            "counterparty_customer": deepcopy(counterparty_customer),
+            "destination_country": deepcopy(country),
+            "linked_alerts": deepcopy(linked_alerts),
+            "linked_cases": deepcopy(linked_cases),
+        }
 
     def _high_risk_alert_context(self) -> dict[str, Any]:
         recent_transactions = [

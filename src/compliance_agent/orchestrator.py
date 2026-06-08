@@ -6,6 +6,7 @@ from .adapters.sidecar_store import SidecarStore
 from .adapters.source import BankSourceRepository
 from .agents.investigation import InvestigationAgent
 from .agents.pre_screen import PreScreenGate
+from .agents.react_runtime import ReActRuntime
 from .agents.risk import RiskScoringAgent
 from .agents.sar import SARDraftingAgent
 from .agents.triage import TriageAgent
@@ -21,6 +22,7 @@ class ComplianceOrchestrator:
         sidecar: SidecarStore,
         triage_agent: TriageAgent | None = None,
         pre_screen_gate: PreScreenGate | None = None,
+        react_runtime: ReActRuntime | None = None,
         investigation_agent: InvestigationAgent | None = None,
         risk_agent: RiskScoringAgent | None = None,
         sar_agent: SARDraftingAgent | None = None,
@@ -30,6 +32,7 @@ class ComplianceOrchestrator:
         self.sidecar = sidecar
         self.triage_agent = triage_agent or TriageAgent()
         self.pre_screen_gate = pre_screen_gate or PreScreenGate()
+        self.react_runtime = react_runtime or ReActRuntime()
         self.investigation_agent = investigation_agent or InvestigationAgent()
         self.risk_agent = risk_agent or RiskScoringAgent()
         self.sar_agent = sar_agent or SARDraftingAgent()
@@ -41,15 +44,11 @@ class ComplianceOrchestrator:
         if pre_screen.gate_decision in {"obvious_clear", "obvious_escalate"}:
             result = pre_screen.to_agent_result()
         else:
-            result = self.triage_agent.run(context)
-            result.details["triage_path"] = "pre_screen_ambiguous_fallback"
-            result.details["pre_screen_gate"] = pre_screen.to_details()
-            result.details["baseline_assessment"] = pre_screen.baseline_assessment
-            result.details["reason_codes"] = list(pre_screen.reason_codes)
-            result.details["selected_typology_signals"] = dict(
-                pre_screen.selected_typology_signals
+            result = self.react_runtime.run_triage(
+                self.source,
+                alert_id,
+                pre_screen_result=pre_screen,
             )
-            result.details["human_required"] = True
         return self._validate_and_persist(context, result)
 
     def investigate_alert(self, alert_id: int) -> dict[str, Any]:

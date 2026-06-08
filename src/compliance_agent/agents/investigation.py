@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..domain import AgentResult, Claim, SourceRef
+from ..domain import AgentResult, Claim, ReasoningItem, SourceRef
 from ..utils import clamp, new_id
 from .common import collect_evidence
 from .typologies import TypologyEngine
@@ -29,8 +29,20 @@ class InvestigationAgent:
             recommendation = "return_to_triage"
 
         reasoning = [
-            f"Activated {len(signals)} relevant typology sub-agent(s).",
-            *[signal.rationale for signal in signals],
+            ReasoningItem(
+                statement=f"Activated {len(signals)} relevant typology sub-agent(s).",
+                source_refs=[
+                    SourceRef("alerts", str(alert["alert_id"])),
+                    SourceRef("customers", str(customer["customer_id"])),
+                ],
+            ),
+            *[
+                ReasoningItem(
+                    statement=signal.rationale,
+                    source_refs=signal.source_refs,
+                )
+                for signal in signals
+            ],
         ]
         claims = [
             Claim(

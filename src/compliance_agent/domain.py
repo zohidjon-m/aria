@@ -28,10 +28,17 @@ class Claim:
 
 
 @dataclass
+class ReasoningItem:
+    statement: str
+    source_refs: list[SourceRef]
+
+
+@dataclass
 class ValidationFinding:
     claim: str
     issue: str
     severity: str = "high"
+    kind: str = "claim"
 
 
 @dataclass
@@ -54,7 +61,7 @@ class AgentResult:
     recommendation: str
     confidence: float
     score: float
-    reasoning: list[str]
+    reasoning: list[ReasoningItem]
     claims: list[Claim]
     evidence: list[EvidenceItem]
     details: dict[str, Any] = field(default_factory=dict)

@@ -6,16 +6,16 @@ still pending.
 
 ## Current Status
 
-The project has a strong sidecar foundation and the first four phases of the
-dynamic intelligence plan are implemented.
+The project has a strong sidecar foundation and phases 1-7 of the dynamic
+intelligence plan are implemented for the alert triage path.
 
-Triage now runs a deterministic pre-screen gate before the legacy fixed scoring
-agent. Obvious false positives and obvious escalations are handled through the
-gate, while ambiguous alerts fall back to the existing triage agent. The repo
-also has a planner-facing, scoped tool registry, observation contract,
-first-class entity scope guard, and customer-relative behavioral baseline tool.
-It does not yet have a bounded ReAct runtime, runtime typology routing, LLM
-planner, or multi-hop graph tracing tool.
+Triage now runs a deterministic pre-screen gate before dynamic investigation.
+Obvious false positives and obvious escalations are handled through the gate,
+while ambiguous alerts enter a bounded ReAct runtime with routed tools. The
+heuristic planner remains the default offline planner, and an optional LLM
+planner is available behind the same planner interface with strict mocked
+contract tests. The repo still does not have a multi-hop graph tracing tool,
+queryable trace tables or a shared deterministic confidence engine.
 
 ## Completed Foundation
 
@@ -114,13 +114,13 @@ Relevant files:
 
 ### Validation Gate
 
-Partially completed.
+Completed for claims and reasoning.
 
 Notes:
 
-- The validation agent checks that claims cite source evidence.
-- The new plan requires validation to also cover structured reasoning lines.
-- Current reasoning is still a list of strings and is not source-ref validated.
+- The validation agent checks that claims and structured reasoning lines cite
+  retrieved source evidence.
+- Unsupported claim or reasoning references fail validation.
 
 Relevant files:
 
@@ -188,14 +188,14 @@ python -m compileall src tests scripts
 | Entity scope control | Completed for tooling | `InvestigationScope` tracks root and allowed IDs, `ScopePolicy` is declared per tool, registry execution rejects planner-supplied entity IDs generically, and scope mismatch errors are controlled. Full ReAct-loop enforcement remains Phase 6. |
 | Behavioral baseline tool | Completed for tooling | `compute_behavioral_baseline` now uses bounded source methods to compute percentiles, aggregates, cash share, novelty flags, similar-alert status counts, and a deterministic baseline assessment. |
 | Tiered pre-screen gate | Completed | `PreScreenGate` uses scoped tool observations to classify `obvious_clear`, `obvious_escalate`, or `ambiguous`; live triage uses gate decisions and falls back to the old triage agent for ambiguous alerts. |
-| Dynamic typology router | Not started | Typologies exist but are not routed to narrow available tools. |
-| ReAct runtime with heuristic planner | Not started | No plan/act/observe loop exists yet. |
-| LLM planner behind same interface | Not started | No LLM planner exists in the new sidecar implementation. |
-| Graph tracing tool | Partially completed | Phase 2 records immediate `TrustedGraphEdge` facts when present. Multi-hop tracing remains Phase 8. |
-| Sidecar trace persistence | Not started | Current sidecar stores results, not step-level traces. |
-| Grounded reasoning validation | Not started | Claims are validated; reasoning is not yet structured or validated. |
+| Dynamic typology router | Completed for runtime | `TypologyRouter` deterministically activates typology tool groups and returns a filtered planner-facing `ToolRegistry`. |
+| ReAct runtime with heuristic planner | Completed for ambiguous triage | Ambiguous pre-screen alerts now use a bounded ReAct runtime with heuristic planning, routed tools, stop-reason disposition mapping, and persisted trace details. |
+| LLM planner behind same interface | Completed for planner contract | `LLMPlanner` implements the same planner protocol with strict JSON validation, routed-tool enforcement, bounded tool-arg validation, mocked tests, and optional OpenAI-compatible provider wiring. |
+| Graph tracing tool | Completed for runtime | `trace_money_flow` performs bounded multi-hop traversal through source-adapter graph edge reads and detects rapid pass-through, cycles, fan-out, many-to-one aggregation, high-risk endpoints, and linked alerts/cases. |
+| Sidecar trace persistence | Partially completed | Phase 6 persists runtime steps inside result details; first-class queryable trace tables remain pending. |
+| Grounded reasoning validation | Completed | `AgentResult.reasoning` now uses source-referenced reasoning records and the validator checks reasoning statements with the same evidence rule as claims. |
 | Deterministic confidence engine | Not started | Current agents compute confidence internally; no shared calibrated confidence engine exists. |
-| Expanded test suite | Partially completed | Phase 1 registry/observation tests, Phase 2 scope-control tests, Phase 3 baseline tests, and Phase 4 pre-screen gate tests exist. Later phase tests remain pending. |
+| Expanded test suite | Partially completed | Phase 1 registry/observation tests, Phase 2 scope-control tests, Phase 3 baseline tests, Phase 4 pre-screen gate tests, Phase 5 typology-router tests, Phase 6 runtime-control tests, Phase 7 mocked LLM-planner tests, Phase 8 graph-tracing tests, and Phase 9 grounded-reasoning tests exist. Later phase tests remain pending. |
 
 ## Completion Notes And Design Decisions
 
@@ -242,11 +242,10 @@ operators will need to query tool calls, observations, and graph signals.
 
 ## Next Implementation Step
 
-Start Phase 5:
+Start Phase 10:
 
-1. Add a runtime typology router before planning.
-2. Use alert context, baseline facts, and obvious typology signals to activate
-   only relevant typology tool groups.
-3. Keep the router deterministic and separate from planner-callable tools.
-
-Only after the router is tested should the bounded ReAct runtime be introduced.
+1. Add a shared deterministic confidence engine.
+2. Compute confidence from controlled signals such as evidence completeness,
+   baseline fit, typology corroboration, graph red flags, data limitations, and
+   stop reason.
+3. Remove agent-local confidence formulas where the shared engine applies.

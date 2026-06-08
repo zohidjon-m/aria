@@ -159,6 +159,7 @@ class InvestigationScope(BaseModel):
         edges: list[TrustedGraphEdge],
     ) -> "InvestigationScope":
         allowed_account_ids = set(self.allowed_account_ids)
+        allowed_transaction_ids = set(self.allowed_transaction_ids)
         trusted_graph_edges = list(self.trusted_graph_edges)
         existing = {
             (
@@ -170,12 +171,9 @@ class InvestigationScope(BaseModel):
         }
 
         for edge in edges:
-            if edge.source_transaction_id not in self.allowed_transaction_ids:
-                raise ScopeViolationError(
-                    "Graph edge source transaction is outside allowed scope."
-                )
-            if edge.source_account_id not in self.allowed_account_ids:
+            if edge.source_account_id not in allowed_account_ids:
                 raise ScopeViolationError("Graph edge source account is outside allowed scope.")
+            allowed_transaction_ids.add(edge.source_transaction_id)
             allowed_account_ids.add(edge.counterparty_account_id)
             key = (
                 edge.source_transaction_id,
@@ -189,6 +187,7 @@ class InvestigationScope(BaseModel):
         return self.model_copy(
             update={
                 "allowed_account_ids": allowed_account_ids,
+                "allowed_transaction_ids": allowed_transaction_ids,
                 "trusted_graph_edges": trusted_graph_edges,
             },
             deep=True,
@@ -251,6 +250,19 @@ class ToolRegistry:
         if definition.name in self._definitions:
             raise ToolRegistryError(f"Tool already registered: {definition.name}")
         self._definitions[definition.name] = definition
+
+    def subset(self, allowed_names: set[str] | list[str] | tuple[str, ...]) -> "ToolRegistry":
+        allowed = set(allowed_names)
+        missing = sorted(allowed - self.names)
+        if missing:
+            raise UnknownToolError(f"Unknown tool(s): {', '.join(missing)}")
+        return ToolRegistry(
+            [
+                definition
+                for name, definition in self._definitions.items()
+                if name in allowed
+            ]
+        )
 
     def get(self, name: str) -> ToolDefinition:
         try:

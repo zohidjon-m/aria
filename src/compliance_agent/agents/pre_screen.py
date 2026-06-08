@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..adapters.source import BankSourceRepository
-from ..domain import AgentResult, Claim, EvidenceItem, SourceRef
+from ..domain import AgentResult, Claim, EvidenceItem, ReasoningItem, SourceRef
 from ..utils import clamp, new_id
 from .common import collect_evidence
 from .phase1_tools import build_phase1_tool_registry, build_scope_for_alert
@@ -52,7 +52,7 @@ class PreScreenResult:
     confidence: float
     score: float
     reason_codes: list[str]
-    reasoning: list[str]
+    reasoning: list[ReasoningItem]
     claims: list[Claim]
     evidence: list[EvidenceItem]
     tool_observations: dict[str, ToolObservation]
@@ -190,6 +190,7 @@ class PreScreenGate:
             score=score,
             reason_codes=reason_codes,
             reasoning=self._reasoning(
+                alert_context=alert_context,
                 alert_id=alert_id,
                 gate_decision=gate_decision,
                 recommended_disposition=recommended_disposition,
@@ -316,6 +317,7 @@ class PreScreenGate:
     def _reasoning(
         self,
         *,
+        alert_context: dict[str, Any],
         alert_id: int,
         gate_decision: str,
         recommended_disposition: str,
@@ -324,37 +326,75 @@ class PreScreenGate:
         geography_features: dict[str, Any],
         structuring_features: dict[str, Any],
         velocity_features: dict[str, Any],
-    ) -> list[str]:
+    ) -> list[ReasoningItem]:
+        alert = alert_context["alert"]
+        transaction = alert_context["transaction"]
+        pattern = alert_context.get("pattern") or {}
+        country = alert_context.get("destination_country") or {}
+        alert_refs = [
+            SourceRef("alerts", str(alert["alert_id"])),
+            SourceRef("transactions", str(transaction["transaction_id"])),
+        ]
+        baseline_refs = self._non_empty_refs(
+            [
+                SourceRef("transactions", str(transaction["transaction_id"])),
+                self._optional_ref(pattern, "transaction_patterns", "pattern_id"),
+            ]
+        )
+        geography_refs = self._non_empty_refs(
+            [
+                SourceRef("transactions", str(transaction["transaction_id"])),
+                self._optional_ref(country, "countries", "country_code"),
+            ]
+        )
         reasoning = [
-            (
-                f"Pre-screen gate classified alert {alert_id} as {gate_decision} "
-                f"and recommends {recommended_disposition}."
+            ReasoningItem(
+                statement=(
+                    f"Pre-screen gate classified alert {alert_id} as {gate_decision} "
+                    f"and recommends {recommended_disposition}."
+                ),
+                source_refs=alert_refs,
             ),
-            (
-                "Behavioral baseline assessment is "
-                f"{baseline_features.get('baseline_assessment')} with "
-                f"{baseline_features.get('deviation_points')} deviation point(s)."
+            ReasoningItem(
+                statement=(
+                    "Behavioral baseline assessment is "
+                    f"{baseline_features.get('baseline_assessment')} with "
+                    f"{baseline_features.get('deviation_points')} deviation point(s)."
+                ),
+                source_refs=baseline_refs,
             ),
-            (
-                "Screening found "
-                f"{screening_features.get('sanctions_match_count', 0)} sanctions match(es) "
-                f"and {screening_features.get('pep_match_count', 0)} PEP match(es)."
+            ReasoningItem(
+                statement=(
+                    "Screening found "
+                    f"{screening_features.get('sanctions_match_count', 0)} sanctions match(es) "
+                    f"and {screening_features.get('pep_match_count', 0)} PEP match(es)."
+                ),
+                source_refs=[SourceRef("customers", str(alert_context["customer"]["customer_id"]))],
             ),
-            (
-                "Geography check has sanctioned_country="
-                f"{bool(geography_features.get('is_sanctioned_country'))} "
-                f"and fatf_status={geography_features.get('fatf_status')}."
+            ReasoningItem(
+                statement=(
+                    "Geography check has sanctioned_country="
+                    f"{bool(geography_features.get('is_sanctioned_country'))} "
+                    f"and fatf_status={geography_features.get('fatf_status')}."
+                ),
+                source_refs=geography_refs,
             ),
-            (
-                "Structuring check has current_in_band="
-                f"{bool(structuring_features.get('current_transaction_in_structuring_band'))} "
-                f"and band_count={structuring_features.get('structuring_band_count')}."
+            ReasoningItem(
+                statement=(
+                    "Structuring check has current_in_band="
+                    f"{bool(structuring_features.get('current_transaction_in_structuring_band'))} "
+                    f"and band_count={structuring_features.get('structuring_band_count')}."
+                ),
+                source_refs=[SourceRef("transactions", str(transaction["transaction_id"]))],
             ),
-            (
-                "Velocity check has threshold_met="
-                f"{bool(velocity_features.get('velocity_threshold_met'))} "
-                f"and max_same_day_count="
-                f"{velocity_features.get('max_same_day_transaction_count')}."
+            ReasoningItem(
+                statement=(
+                    "Velocity check has threshold_met="
+                    f"{bool(velocity_features.get('velocity_threshold_met'))} "
+                    f"and max_same_day_count="
+                    f"{velocity_features.get('max_same_day_transaction_count')}."
+                ),
+                source_refs=[SourceRef("transactions", str(transaction["transaction_id"]))],
             ),
         ]
         return reasoning

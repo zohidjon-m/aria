@@ -68,7 +68,7 @@ class Phase4PreScreenGateTest(unittest.TestCase):
         self.assertEqual(response["result"]["recommendation"], "escalate")
         self.assertEqual(response["validation"]["status"], "passed")
 
-    def test_insufficient_history_is_ambiguous_and_falls_back_to_existing_triage(self) -> None:
+    def test_insufficient_history_is_ambiguous_and_enters_react_runtime(self) -> None:
         gate_result = self.gate.run(self.source, 1005)
 
         self.assertEqual(gate_result.gate_decision, "ambiguous")
@@ -79,12 +79,13 @@ class Phase4PreScreenGateTest(unittest.TestCase):
 
         self.assertEqual(
             response["result"]["details"]["triage_path"],
-            "pre_screen_ambiguous_fallback",
+            "pre_screen_ambiguous_react",
         )
         self.assertEqual(
             response["result"]["details"]["pre_screen_gate"]["gate_decision"],
             "ambiguous",
         )
+        self.assertIn("react_runtime", response["result"]["details"])
         self.assertEqual(response["validation"]["status"], "passed")
         self.assertNotEqual(response["result"]["recommendation"], "likely_false_positive")
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..domain import AgentResult, Claim, SourceRef
+from ..domain import AgentResult, Claim, ReasoningItem, SourceRef
 from ..utils import new_id
 from .common import collect_evidence
 
@@ -55,8 +55,21 @@ class SARDraftingAgent:
             confidence=0.8 if evidence else 0.45,
             score=0,
             reasoning=[
-                "SAR narrative is drafted from linked case, alert, and transaction facts.",
-                "Draft is not a regulatory submission and requires officer approval.",
+                ReasoningItem(
+                    statement=(
+                        "SAR narrative is drafted from linked case, alert, and transaction facts."
+                    ),
+                    source_refs=[
+                        SourceRef("cases", str(case["case_id"])),
+                        SourceRef("customers", str(customer["customer_id"])),
+                    ],
+                ),
+                ReasoningItem(
+                    statement=(
+                        "Draft is not a regulatory submission and requires officer approval."
+                    ),
+                    source_refs=[SourceRef("cases", str(case["case_id"]))],
+                ),
             ],
             claims=claims,
             evidence=evidence,

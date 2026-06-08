@@ -45,3 +45,11 @@ class BankSourceRepository(Protocol):
         max_rows: int,
     ) -> list[dict[str, Any]]:
         ...
+
+    def get_money_flow_edges(
+        self,
+        account_ids: list[int],
+        anchor_transaction_id: int,
+        max_rows: int,
+    ) -> list[dict[str, Any]]:
+        ...

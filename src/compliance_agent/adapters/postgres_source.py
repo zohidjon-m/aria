@@ -329,6 +329,115 @@ class PostgresBankSourceRepository:
             ),
         )
 
+    def get_money_flow_edges(
+        self,
+        account_ids: list[int],
+        anchor_transaction_id: int,
+        max_rows: int,
+    ) -> list[dict[str, Any]]:
+        bounded_account_ids = [int(account_id) for account_id in account_ids[:100]]
+        if not bounded_account_ids:
+            return []
+        bounded_max_rows = max(1, min(100, int(max_rows)))
+        placeholders = ", ".join(["%s"] * len(bounded_account_ids))
+        transactions = self._many(
+            f"""
+            SELECT t.*
+            FROM transactions t
+            WHERE t.counterparty_account_id IS NOT NULL
+              AND (
+                t.account_id IN ({placeholders})
+                OR t.counterparty_account_id IN ({placeholders})
+              )
+            ORDER BY
+              CASE WHEN t.transaction_id = %s THEN 0 ELSE 1 END,
+              t.created_at ASC,
+              t.transaction_id ASC
+            LIMIT %s
+            """,
+            (
+                *bounded_account_ids,
+                *bounded_account_ids,
+                int(anchor_transaction_id),
+                bounded_max_rows,
+            ),
+        )
+        return [self._money_flow_edge_record(transaction) for transaction in transactions]
+
+    def _money_flow_edge_record(self, transaction: dict[str, Any]) -> dict[str, Any]:
+        source_account = self._one(
+            "SELECT * FROM accounts WHERE account_id = %s",
+            (transaction["account_id"],),
+        ) or {}
+        source_customer = {}
+        if source_account.get("customer_id") is not None:
+            source_customer = self._one(
+                "SELECT * FROM customers WHERE customer_id = %s",
+                (source_account["customer_id"],),
+            ) or {}
+
+        counterparty_account = self._one(
+            "SELECT * FROM accounts WHERE account_id = %s",
+            (transaction["counterparty_account_id"],),
+        ) or {}
+        counterparty_customer = {}
+        if counterparty_account.get("customer_id") is not None:
+            counterparty_customer = self._one(
+                "SELECT * FROM customers WHERE customer_id = %s",
+                (counterparty_account["customer_id"],),
+            ) or {}
+
+        destination_country = {}
+        if transaction.get("destination_country"):
+            destination_country = self._one(
+                "SELECT * FROM countries WHERE country_code = %s",
+                (transaction["destination_country"],),
+            ) or {}
+
+        linked_alerts = self._many(
+            """
+            SELECT *
+            FROM alerts
+            WHERE transaction_id = %s
+            ORDER BY created_at ASC
+            LIMIT 20
+            """,
+            (transaction["transaction_id"],),
+        )
+        customer_ids = [
+            customer_id
+            for customer_id in (
+                source_customer.get("customer_id"),
+                counterparty_customer.get("customer_id"),
+            )
+            if customer_id is not None
+        ]
+        linked_cases: list[dict[str, Any]] = []
+        if customer_ids:
+            placeholders = ", ".join(["%s"] * len(customer_ids))
+            linked_cases = self._many(
+                f"""
+                SELECT *
+                FROM cases
+                WHERE customer_id IN ({placeholders})
+                  AND status IN ('open', 'under_review', 'escalated')
+                ORDER BY opened_at DESC
+                LIMIT 20
+                """,
+                tuple(customer_ids),
+            )
+
+        return {
+            "transaction": transaction,
+            "source_account": source_account,
+            "source_customer": source_customer,
+            "counterparty_account": counterparty_account,
+            "counterparty_customer": counterparty_customer,
+            "destination_country": destination_country,
+            "linked_alerts": linked_alerts,
+            "linked_cases": linked_cases,
+        }
+
     def _screen_sanctions(self, full_name: str) -> list[dict[str, Any]]:
         return self._many(
             """

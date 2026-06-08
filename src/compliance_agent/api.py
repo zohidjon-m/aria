@@ -6,6 +6,8 @@ from .adapters.fake_source import FakeBankSourceRepository
 from .adapters.postgres_source import PostgresBankSourceRepository
 from .adapters.sidecar_store import SidecarStore
 from .adapters.source import SourceRecordNotFound
+from .agents.llm_planner import LLMPlanner, OpenAICompatibleChatProvider
+from .agents.react_runtime import ReActRuntime
 from .config import Settings
 from .orchestrator import ComplianceOrchestrator
 
@@ -16,7 +18,34 @@ def build_orchestrator(settings: Settings) -> ComplianceOrchestrator:
     else:
         source = PostgresBankSourceRepository(settings.bank_source_dsn)
     sidecar = SidecarStore(settings.sidecar_db_path)
-    return ComplianceOrchestrator(source=source, sidecar=sidecar)
+    react_runtime = _build_react_runtime(settings)
+    return ComplianceOrchestrator(
+        source=source,
+        sidecar=sidecar,
+        react_runtime=react_runtime,
+    )
+
+
+def _build_react_runtime(settings: Settings) -> ReActRuntime:
+    if settings.planner_type == "heuristic":
+        return ReActRuntime()
+    if settings.planner_type != "llm":
+        raise ValueError(f"Unsupported PLANNER_TYPE: {settings.planner_type}")
+    if not settings.llm_api_key:
+        raise ValueError("LLM_API_KEY is required when PLANNER_TYPE=llm")
+    if not settings.llm_model:
+        raise ValueError("LLM_MODEL is required when PLANNER_TYPE=llm")
+    provider = OpenAICompatibleChatProvider(
+        api_key=settings.llm_api_key,
+        endpoint=settings.llm_endpoint,
+    )
+    return ReActRuntime(
+        planner=LLMPlanner(
+            provider=provider,
+            model_id=settings.llm_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+        )
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
