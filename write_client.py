@@ -1,4 +1,8 @@
-import axios from 'axios';
+import pathlib
+
+CLIENT = pathlib.Path("D:/sejong_major/projects/compliance-agent/frontend/src/api/client.js")
+
+CLIENT.write_text(r"""import axios from 'axios';
 
 const api = axios.create({
   baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api',
@@ -39,3 +43,6 @@ export const getAgentRun = (runId) => api.get(`/agent-runs/${runId}`).then(r => 
 export const getAgentTrace = (runId) => api.get(`/agent-runs/${runId}/trace`).then(r => r.data);
 
 export const getAuditLog = (params) => api.get('/audit-log', { params }).then(r => r.data);
+""", encoding="utf-8")
+
+print("client.js written.")

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from contextlib import contextmanager
 from typing import Any, Iterator
+
+import pathlib
 
 import psycopg2
 import psycopg2.extras
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
-from compliance_agent.config import Settings
+from compliance_agent.config import Settings  # noqa: E402
 
 
 def _get_dsn() -> str:

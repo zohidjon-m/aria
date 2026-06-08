@@ -10,23 +10,12 @@ def get_officer(x_officer_id: str = Header(..., alias="X-Officer-Id")) -> dict:
         officer_id = int(x_officer_id)
     except (ValueError, TypeError):
         raise HTTPException(status_code=403, detail="Invalid X-Officer-Id header")
-
     with ro_cursor() as cur:
         cur.execute(
             """
-            SELECT
-                co.officer_id,
-                co.full_name,
-                co.email,
-                co.is_active,
-                co.branch_id,
-                r.role_id,
-                r.role_name,
-                r.can_view_alerts,
-                r.can_manage_cases,
-                r.can_file_sar,
-                r.can_manage_rules,
-                r.can_manage_users
+            SELECT co.officer_id, co.full_name, co.email, co.is_active, co.branch_id,
+                   r.role_id, r.role_name, r.can_view_alerts, r.can_manage_cases,
+                   r.can_file_sar, r.can_manage_rules, r.can_manage_users
             FROM compliance_officers co
             JOIN officer_roles r ON r.role_id = co.role_id
             WHERE co.officer_id = %s
@@ -34,7 +23,6 @@ def get_officer(x_officer_id: str = Header(..., alias="X-Officer-Id")) -> dict:
             (officer_id,),
         )
         row = cur.fetchone()
-
     if not row:
         raise HTTPException(status_code=403, detail="Officer not found")
     if not row["is_active"]:
