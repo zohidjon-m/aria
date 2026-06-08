@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@theme {
+  --color-dark-bg: #0f172a;
+  --color-dark-panel: #1e293b;
+  --color-dark-border: #334155;
+  --color-brand-primary: #3b82f6;
+  --color-brand-accent: #8b5cf6;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-600 rounded;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-500;
+}

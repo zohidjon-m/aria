@@ -1,0 +1,697 @@
+from __future__ import annotations
+
+from collections import Counter
+from statistics import mean, median
+from typing import Any
+
+from pydantic import BaseModel
+
+from ..utils import parse_datetime
+from .tooling import (
+    BehavioralBaselineArgs,
+    DataCompleteness,
+    EmptyToolArgs,
+    InvestigationScope,
+    RowLimitToolArgs,
+    ScopePolicy,
+    ScopeViolationError,
+    SourceRefRecord,
+    ToolDefinition,
+    ToolExecutionContext,
+    ToolLimitation,
+    ToolObservation,
+    ToolRegistry,
+    TraceMoneyFlowArgs,
+)
+
+
+PHASE1_TOOL_NAMES = {
+    "get_alert_context",
+    "get_customer_profile",
+    "get_recent_transactions",
+    "get_prior_alerts",
+    "get_open_cases",
+    "screen_sanctions_pep",
+    "compute_behavioral_baseline",
+    "run_structuring_check",
+    "run_velocity_check",
+    "run_geography_check",
+    "trace_money_flow",
+}
+
+
+def build_phase1_tool_registry() -> ToolRegistry:
+    return ToolRegistry(
+        [
+            ToolDefinition(
+                name="get_alert_context",
+                purpose="Return scoped alert, customer, account, transaction, and rule facts.",
+                args_model=EmptyToolArgs,
+                handler=get_alert_context,
+            ),
+            ToolDefinition(
+                name="get_customer_profile",
+                purpose="Return scoped customer profile and account facts.",
+                args_model=EmptyToolArgs,
+                handler=get_customer_profile,
+            ),
+            ToolDefinition(
+                name="get_recent_transactions",
+                purpose="Return recent transactions for the scoped customer.",
+                args_model=RowLimitToolArgs,
+                handler=get_recent_transactions,
+            ),
+            ToolDefinition(
+                name="get_prior_alerts",
+                purpose="Return prior alerts for the scoped customer.",
+                args_model=RowLimitToolArgs,
+                handler=get_prior_alerts,
+            ),
+            ToolDefinition(
+                name="get_open_cases",
+                purpose="Return open cases for the scoped customer.",
+                args_model=RowLimitToolArgs,
+                handler=get_open_cases,
+            ),
+            ToolDefinition(
+                name="screen_sanctions_pep",
+                purpose="Return sanctions and PEP screening facts for the scoped customer.",
+                args_model=EmptyToolArgs,
+                handler=screen_sanctions_pep,
+            ),
+            ToolDefinition(
+                name="compute_behavioral_baseline",
+                purpose="Return scoped customer-relative behavioral baseline facts.",
+                args_model=BehavioralBaselineArgs,
+                handler=compute_behavioral_baseline,
+            ),
+            ToolDefinition(
+                name="run_structuring_check",
+                purpose="Return deterministic structuring facts for the scoped alert.",
+                args_model=RowLimitToolArgs,
+                handler=run_structuring_check,
+            ),
+            ToolDefinition(
+                name="run_velocity_check",
+                purpose="Return deterministic velocity facts for the scoped alert.",
+                args_model=RowLimitToolArgs,
+                handler=run_velocity_check,
+            ),
+            ToolDefinition(
+                name="run_geography_check",
+                purpose="Return deterministic geography facts for the scoped alert.",
+                args_model=EmptyToolArgs,
+                handler=run_geography_check,
+            ),
+            ToolDefinition(
+                name="trace_money_flow",
+                purpose="Return immediate counterparty facts for the scoped transaction.",
+                args_model=TraceMoneyFlowArgs,
+                handler=trace_money_flow,
+                scope_policy=ScopePolicy.graph_expandable(),
+            ),
+        ]
+    )
+
+
+def build_scope_for_alert(source: Any, alert_id: int) -> InvestigationScope:
+    return InvestigationScope.from_alert_context(source.get_alert_context(alert_id))
+
+
+def get_alert_context(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    alert_context = _alert_context(context)
+    facts = {
+        "alert": alert_context.get("alert"),
+        "rule": alert_context.get("rule"),
+        "transaction": alert_context.get("transaction"),
+        "account": alert_context.get("account"),
+        "customer": alert_context.get("customer"),
+        "destination_country": alert_context.get("destination_country"),
+    }
+    return _observation(
+        facts=facts,
+        source_refs=_context_source_refs(alert_context),
+        data_completeness=DataCompleteness(complete=True),
+    )
+
+
+def get_customer_profile(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    alert_context = _alert_context(context)
+    facts = {
+        "customer": alert_context.get("customer"),
+        "account": alert_context.get("account"),
+        "pattern": alert_context.get("pattern"),
+    }
+    return _observation(
+        facts=facts,
+        source_refs=[
+            *_record_refs("customers", "customer_id", [alert_context.get("customer")]),
+            *_record_refs("accounts", "account_id", [alert_context.get("account")]),
+            *_record_refs("transaction_patterns", "pattern_id", [alert_context.get("pattern")]),
+        ],
+    )
+
+
+def get_recent_transactions(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    parsed = _as_row_args(args)
+    alert_context = _alert_context(context)
+    transactions = list(alert_context.get("recent_transactions") or [])[: parsed.max_rows]
+    return _observation(
+        facts={"recent_transactions": transactions},
+        computed_features={"transaction_count": len(transactions)},
+        source_refs=_record_refs("transactions", "transaction_id", transactions),
+        data_completeness=DataCompleteness(
+            lookback_days_requested=parsed.lookback_days,
+            rows_requested=parsed.max_rows,
+            rows_returned=len(transactions),
+            complete=len(transactions) < parsed.max_rows,
+        ),
+    )
+
+
+def get_prior_alerts(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    parsed = _as_row_args(args)
+    alert_context = _alert_context(context)
+    prior_alerts = list(alert_context.get("prior_alerts") or [])[: parsed.max_rows]
+    return _observation(
+        facts={"prior_alerts": prior_alerts},
+        computed_features={"prior_alert_count": len(prior_alerts)},
+        source_refs=_record_refs("alerts", "alert_id", prior_alerts),
+        data_completeness=DataCompleteness(
+            lookback_days_requested=parsed.lookback_days,
+            rows_requested=parsed.max_rows,
+            rows_returned=len(prior_alerts),
+            complete=len(prior_alerts) < parsed.max_rows,
+        ),
+    )
+
+
+def get_open_cases(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    parsed = _as_row_args(args)
+    cases = context.source.get_open_cases_for_customer(
+        context.scope.customer_id,
+        max_rows=parsed.max_rows,
+    )
+    return _observation(
+        facts={"open_cases": cases},
+        computed_features={"open_case_count": len(cases)},
+        source_refs=_record_refs("cases", "case_id", cases),
+        data_completeness=DataCompleteness(
+            rows_requested=parsed.max_rows,
+            rows_returned=len(cases),
+            complete=len(cases) < parsed.max_rows,
+        ),
+    )
+
+
+def screen_sanctions_pep(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    alert_context = _alert_context(context)
+    sanctions_matches = list(alert_context.get("sanctions_matches") or [])
+    pep_matches = list(alert_context.get("pep_matches") or [])
+    limitations = []
+    if not sanctions_matches and not pep_matches:
+        limitations.append(
+            ToolLimitation(
+                code="exact_name_match_only",
+                message="Phase 1 screening facts are limited to adapter-provided matches.",
+            )
+        )
+    return _observation(
+        facts={
+            "sanctions_matches": sanctions_matches,
+            "pep_matches": pep_matches,
+        },
+        computed_features={
+            "sanctions_match_count": len(sanctions_matches),
+            "pep_match_count": len(pep_matches),
+        },
+        source_refs=[
+            *_record_refs("sanctions_list", "sanction_id", sanctions_matches),
+            *_record_refs("pep_list", "pep_id", pep_matches),
+            *_record_refs("customers", "customer_id", [alert_context.get("customer")]),
+        ],
+        limitations=limitations,
+    )
+
+
+def compute_behavioral_baseline(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    parsed = BehavioralBaselineArgs.model_validate(args.model_dump())
+    alert_context = _alert_context(context)
+    pattern = alert_context.get("pattern") or {}
+    transaction = alert_context.get("transaction") or {}
+    historical_transactions = context.source.get_customer_transactions_for_baseline(
+        context.scope.customer_id,
+        context.scope.transaction_id,
+        parsed.lookback_days,
+        parsed.max_rows,
+    )
+    amount_usd = float(transaction.get("amount_usd") or 0)
+    transaction_type = str(transaction.get("transaction_type") or "")
+    similar_alerts = context.source.get_similar_alerts_for_customer(
+        context.scope.customer_id,
+        transaction_type,
+        amount_usd,
+        parsed.amount_tolerance_pct,
+        parsed.lookback_days,
+        parsed.max_rows,
+    )
+
+    features, limitations = _compute_baseline_features(
+        transaction=transaction,
+        historical_transactions=historical_transactions,
+        similar_alerts=similar_alerts,
+        pattern=pattern,
+        lookback_days=parsed.lookback_days,
+        max_rows=parsed.max_rows,
+    )
+
+    return _observation(
+        facts={
+            "current_transaction": transaction,
+            "historical_transactions": historical_transactions,
+            "similar_alerts": similar_alerts,
+            "pattern": pattern,
+        },
+        computed_features=features,
+        source_refs=[
+            *_record_refs("transaction_patterns", "pattern_id", [pattern]),
+            *_record_refs("transactions", "transaction_id", [transaction]),
+            *_record_refs("transactions", "transaction_id", historical_transactions),
+            *_record_refs("alerts", "alert_id", similar_alerts),
+        ],
+        data_completeness=DataCompleteness(
+            lookback_days_requested=parsed.lookback_days,
+            lookback_days_available=features.get("lookback_days_available"),
+            rows_requested=parsed.max_rows,
+            rows_returned=len(historical_transactions),
+            complete=len(historical_transactions) < parsed.max_rows,
+            missing_segments=[] if pattern else ["transaction_patterns"],
+        ),
+        limitations=limitations,
+    )
+
+
+def run_structuring_check(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    parsed = _as_row_args(args)
+    alert_context = _alert_context(context)
+    transaction = alert_context.get("transaction") or {}
+    recent_transactions = list(alert_context.get("recent_transactions") or [])[: parsed.max_rows]
+    structuring_band_transactions = [
+        tx for tx in recent_transactions if 9000 <= float(tx.get("amount_usd") or 0) <= 9999
+    ]
+    current_amount = float(transaction.get("amount_usd") or 0)
+    return _observation(
+        facts={"structuring_band_transactions": structuring_band_transactions},
+        computed_features={
+            "current_transaction_in_structuring_band": 9000 <= current_amount <= 9999,
+            "structuring_band_count": len(structuring_band_transactions),
+        },
+        source_refs=[
+            *_record_refs("transactions", "transaction_id", [transaction]),
+            *_record_refs("transactions", "transaction_id", structuring_band_transactions),
+        ],
+        data_completeness=DataCompleteness(
+            lookback_days_requested=parsed.lookback_days,
+            rows_requested=parsed.max_rows,
+            rows_returned=len(recent_transactions),
+            complete=len(recent_transactions) < parsed.max_rows,
+        ),
+    )
+
+
+def run_velocity_check(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    parsed = _as_row_args(args)
+    alert_context = _alert_context(context)
+    transactions = list(alert_context.get("recent_transactions") or [])[: parsed.max_rows]
+    counts_by_date = Counter(str(tx.get("created_at", ""))[:10] for tx in transactions)
+    max_same_day_count = max(counts_by_date.values(), default=0)
+    return _observation(
+        facts={"transaction_dates": dict(counts_by_date)},
+        computed_features={
+            "max_same_day_transaction_count": max_same_day_count,
+            "velocity_threshold_met": max_same_day_count >= 10,
+        },
+        source_refs=_record_refs("transactions", "transaction_id", transactions),
+        data_completeness=DataCompleteness(
+            lookback_days_requested=parsed.lookback_days,
+            rows_requested=parsed.max_rows,
+            rows_returned=len(transactions),
+            complete=len(transactions) < parsed.max_rows,
+        ),
+    )
+
+
+def run_geography_check(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    alert_context = _alert_context(context)
+    transaction = alert_context.get("transaction") or {}
+    country = alert_context.get("destination_country") or {}
+    destination = transaction.get("destination_country")
+    return _observation(
+        facts={
+            "destination_country": country,
+            "transaction_destination_country": destination,
+        },
+        computed_features={
+            "has_destination_country": bool(destination),
+            "is_sanctioned_country": bool(country.get("is_sanctioned")),
+            "fatf_status": country.get("fatf_status"),
+            "country_risk_score": country.get("risk_score"),
+        },
+        source_refs=[
+            *_record_refs("transactions", "transaction_id", [transaction]),
+            *_record_refs("countries", "country_code", [country]),
+        ],
+        data_completeness=DataCompleteness(
+            complete=bool(destination) == bool(country),
+            missing_segments=[] if not destination or country else ["countries"],
+        ),
+    )
+
+
+def trace_money_flow(context: ToolExecutionContext, args: BaseModel) -> ToolObservation:
+    parsed = TraceMoneyFlowArgs.model_validate(args.model_dump())
+    alert_context = _alert_context(context)
+    transaction = alert_context.get("transaction") or {}
+    counterparty_account_id = transaction.get("counterparty_account_id")
+    trusted_graph_edges = []
+    transaction_id = transaction.get("transaction_id")
+    source_account_id = transaction.get("account_id")
+    if counterparty_account_id is not None and transaction_id is not None and source_account_id is not None:
+        trusted_graph_edges.append(
+            {
+                "source_transaction_id": int(transaction_id),
+                "source_account_id": int(source_account_id),
+                "counterparty_account_id": int(counterparty_account_id),
+                "evidence_refs": [
+                    {
+                        "table": "transactions",
+                        "key": str(transaction_id),
+                        "columns": ["counterparty_account_id"],
+                    }
+                ],
+            }
+        )
+    limitations = [
+        ToolLimitation(
+            code="phase1_shallow_trace",
+            message="Phase 1 reports only the immediate counterparty; multi-hop tracing is Phase 8.",
+        )
+    ]
+    return _observation(
+        facts={
+            "start_transaction": transaction,
+            "immediate_counterparty_account_id": counterparty_account_id,
+        },
+        computed_features={
+            "max_hops_requested": parsed.max_hops,
+            "max_rows_requested": parsed.max_rows,
+            "has_immediate_counterparty": counterparty_account_id is not None,
+            "trusted_graph_edges": trusted_graph_edges,
+        },
+        source_refs=_record_refs("transactions", "transaction_id", [transaction]),
+        data_completeness=DataCompleteness(rows_requested=parsed.max_rows, complete=True),
+        limitations=limitations,
+    )
+
+
+def _compute_baseline_features(
+    *,
+    transaction: dict[str, Any],
+    historical_transactions: list[dict[str, Any]],
+    similar_alerts: list[dict[str, Any]],
+    pattern: dict[str, Any],
+    lookback_days: int,
+    max_rows: int,
+) -> tuple[dict[str, Any], list[ToolLimitation]]:
+    amounts = [float(tx.get("amount_usd") or 0) for tx in historical_transactions]
+    amount_usd = float(transaction.get("amount_usd") or 0)
+    transaction_type = str(transaction.get("transaction_type") or "")
+    historical_count = len(historical_transactions)
+    transaction_type_counts = Counter(
+        str(tx.get("transaction_type") or "") for tx in historical_transactions
+    )
+    transaction_type_shares = {
+        tx_type: round((count / historical_count) * 100, 2)
+        for tx_type, count in transaction_type_counts.items()
+        if historical_count
+    }
+    country_counts = Counter(
+        str(tx.get("destination_country"))
+        for tx in historical_transactions
+        if tx.get("destination_country")
+    )
+    counterparty_ids = {
+        tx.get("counterparty_account_id")
+        for tx in historical_transactions
+        if tx.get("counterparty_account_id") is not None
+    }
+    current_country = transaction.get("destination_country")
+    current_counterparty = transaction.get("counterparty_account_id")
+    cash_transactions = [
+        tx for tx in historical_transactions if str(tx.get("transaction_type") or "") == "cash"
+    ]
+    cash_amounts = [float(tx.get("amount_usd") or 0) for tx in cash_transactions]
+    similar_alert_counts = Counter(str(alert.get("status") or "unknown") for alert in similar_alerts)
+
+    amount_percentile = _percentile(amount_usd, amounts)
+    cash_amount_percentile = (
+        _percentile(amount_usd, cash_amounts) if transaction_type == "cash" and cash_amounts else None
+    )
+    same_day_transaction_count = _same_day_count(transaction, historical_transactions)
+    lookback_days_available = _lookback_days_available(transaction, historical_transactions)
+    observed_cash_pct = round((len(cash_transactions) / historical_count) * 100, 2) if historical_count else 0.0
+    transaction_type_count = transaction_type_counts.get(transaction_type, 0)
+    transaction_type_share = transaction_type_shares.get(transaction_type, 0.0)
+    new_destination_country = bool(current_country) and current_country not in country_counts
+    new_counterparty = bool(current_counterparty) and current_counterparty not in counterparty_ids
+
+    limitations: list[ToolLimitation] = []
+    if historical_count >= max_rows:
+        limitations.append(
+            ToolLimitation(
+                code="history_truncated",
+                message="Historical transactions reached the requested row limit.",
+            )
+        )
+    if historical_count < 5:
+        limitations.append(
+            ToolLimitation(
+                code="insufficient_history",
+                message="Fewer than 5 historical transactions are available for baseline assessment.",
+                severity="warning",
+            )
+        )
+    if transaction_type == "cash" and not cash_amounts:
+        limitations.append(
+            ToolLimitation(
+                code="no_cash_history",
+                message="Current transaction is cash, but no historical cash transactions were found.",
+                severity="warning",
+            )
+        )
+
+    deviation_points, assessment_factors = _baseline_deviation_points(
+        amount_percentile=amount_percentile,
+        transaction_type_count=transaction_type_count,
+        transaction_type_share=transaction_type_share,
+        new_destination_country=new_destination_country,
+        new_counterparty=new_counterparty,
+        same_day_transaction_count=same_day_transaction_count,
+        similar_alert_counts=similar_alert_counts,
+        historical_count=historical_count,
+    )
+    baseline_assessment = _baseline_assessment(deviation_points, historical_count)
+
+    features = {
+        "lookback_days": lookback_days,
+        "lookback_days_available": lookback_days_available,
+        "historical_transaction_count": historical_count,
+        "amount_usd": amount_usd,
+        "amount_percentile": amount_percentile,
+        "cash_amount_percentile": cash_amount_percentile,
+        "average_transaction_amount": round(mean(amounts), 2) if amounts else None,
+        "median_transaction_amount": round(median(amounts), 2) if amounts else None,
+        "max_transaction_amount": round(max(amounts), 2) if amounts else None,
+        "observed_cash_pct": observed_cash_pct,
+        "pattern_cash_pct": pattern.get("cash_pct"),
+        "pattern_international_pct": pattern.get("international_pct"),
+        "same_day_transaction_count": same_day_transaction_count,
+        "transaction_type_counts": dict(transaction_type_counts),
+        "transaction_type_shares": transaction_type_shares,
+        "usual_transaction_types": [
+            tx_type for tx_type, share in transaction_type_shares.items() if share >= 10
+        ],
+        "usual_countries": sorted(country_counts),
+        "new_destination_country": new_destination_country,
+        "new_counterparty": new_counterparty,
+        "similar_alert_counts_by_status": dict(similar_alert_counts),
+        "similar_dismissed_count": similar_alert_counts.get("dismissed", 0),
+        "similar_escalated_count": similar_alert_counts.get("escalated", 0),
+        "deviation_points": deviation_points,
+        "assessment_factors": assessment_factors,
+        "baseline_assessment": baseline_assessment,
+    }
+    return features, limitations
+
+
+def _percentile(value: float, population: list[float]) -> float | None:
+    if not population:
+        return None
+    less_than_or_equal = sum(1 for item in population if item <= value)
+    return round((less_than_or_equal / len(population)) * 100, 2)
+
+
+def _same_day_count(
+    transaction: dict[str, Any],
+    historical_transactions: list[dict[str, Any]],
+) -> int:
+    current_dt = parse_datetime(transaction.get("created_at"))
+    if not current_dt:
+        return 1
+    count = 1
+    for tx in historical_transactions:
+        tx_dt = parse_datetime(tx.get("created_at"))
+        if tx_dt and tx_dt.date() == current_dt.date():
+            count += 1
+    return count
+
+
+def _lookback_days_available(
+    transaction: dict[str, Any],
+    historical_transactions: list[dict[str, Any]],
+) -> int | None:
+    current_dt = parse_datetime(transaction.get("created_at"))
+    historical_dates = [
+        parse_datetime(tx.get("created_at"))
+        for tx in historical_transactions
+        if parse_datetime(tx.get("created_at"))
+    ]
+    if not current_dt or not historical_dates:
+        return None
+    oldest = min(historical_dates)
+    return abs((current_dt - oldest).days)
+
+
+def _baseline_deviation_points(
+    *,
+    amount_percentile: float | None,
+    transaction_type_count: int,
+    transaction_type_share: float,
+    new_destination_country: bool,
+    new_counterparty: bool,
+    same_day_transaction_count: int,
+    similar_alert_counts: Counter,
+    historical_count: int,
+) -> tuple[int, list[str]]:
+    if historical_count < 5:
+        return 0, ["insufficient_history"]
+
+    points = 0
+    factors: list[str] = []
+    if amount_percentile is not None:
+        if amount_percentile >= 95 or amount_percentile <= 5:
+            points += 2
+            factors.append("amount_percentile_extreme")
+        elif amount_percentile >= 90 or amount_percentile <= 10:
+            points += 1
+            factors.append("amount_percentile_elevated")
+
+    if transaction_type_count == 0:
+        points += 2
+        factors.append("transaction_type_unseen")
+    elif transaction_type_share < 10:
+        points += 1
+        factors.append("transaction_type_rare")
+
+    if new_destination_country:
+        points += 1
+        factors.append("new_destination_country")
+    if new_counterparty:
+        points += 1
+        factors.append("new_counterparty")
+    if same_day_transaction_count >= 10:
+        points += 1
+        factors.append("same_day_velocity")
+    if similar_alert_counts.get("escalated", 0) > 0 and similar_alert_counts.get("dismissed", 0) == 0:
+        points += 1
+        factors.append("similar_escalations_without_dismissals")
+
+    return points, factors
+
+
+def _baseline_assessment(deviation_points: int, historical_count: int) -> str:
+    if historical_count < 5:
+        return "insufficient_data"
+    if deviation_points == 0:
+        return "consistent"
+    if deviation_points <= 2:
+        return "mild_deviation"
+    return "strong_deviation"
+
+
+def _alert_context(context: ToolExecutionContext) -> dict[str, Any]:
+    alert_context = context.source.get_alert_context(context.scope.alert_id)
+    scope = InvestigationScope.from_alert_context(alert_context)
+    expected = (
+        scope.alert_id,
+        scope.customer_id,
+        scope.account_id,
+        scope.transaction_id,
+    )
+    actual = (
+        context.scope.alert_id,
+        context.scope.customer_id,
+        context.scope.account_id,
+        context.scope.transaction_id,
+    )
+    if expected != actual:
+        raise ScopeViolationError("Source alert context does not match execution scope.")
+    return alert_context
+
+
+def _observation(
+    *,
+    facts: dict[str, Any],
+    computed_features: dict[str, Any] | None = None,
+    source_refs: list[SourceRefRecord] | None = None,
+    data_completeness: DataCompleteness | None = None,
+    limitations: list[ToolLimitation] | None = None,
+) -> ToolObservation:
+    return ToolObservation(
+        facts=facts,
+        computed_features=computed_features or {},
+        source_refs=source_refs or [],
+        data_completeness=data_completeness or DataCompleteness(),
+        limitations=limitations or [],
+    )
+
+
+def _record_refs(
+    table: str,
+    key_name: str,
+    records: list[dict[str, Any] | None],
+) -> list[SourceRefRecord]:
+    refs: list[SourceRefRecord] = []
+    for record in records:
+        if not record:
+            continue
+        key = record.get(key_name)
+        if key is None:
+            continue
+        refs.append(SourceRefRecord(table=table, key=str(key)))
+    return refs
+
+
+def _context_source_refs(alert_context: dict[str, Any]) -> list[SourceRefRecord]:
+    return [
+        *_record_refs("alerts", "alert_id", [alert_context.get("alert")]),
+        *_record_refs("compliance_rules", "rule_id", [alert_context.get("rule")]),
+        *_record_refs("transactions", "transaction_id", [alert_context.get("transaction")]),
+        *_record_refs("accounts", "account_id", [alert_context.get("account")]),
+        *_record_refs("customers", "customer_id", [alert_context.get("customer")]),
+        *_record_refs("countries", "country_code", [alert_context.get("destination_country")]),
+    ]
+
+
+def _as_row_args(args: BaseModel) -> RowLimitToolArgs:
+    return RowLimitToolArgs.model_validate(args.model_dump())

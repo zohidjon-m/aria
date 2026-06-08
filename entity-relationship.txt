@@ -1,0 +1,38 @@
+Countries sits at the foundation
+Almost everything geographic references countries. 
+Branches are located in a country. Customers have a nationality that points to a country. 
+Transactions have a destination country for international transfers. 
+The sanctions and PEP lists also reference countries. It's a pure lookup table everything else depends on.
+
+The banking core chain
+The main flow goes: countries → branches → accounts → transactions.
+A branch belongs to one country. A customer can have multiple accounts, each account belongs to one branch. Every transaction belongs to one account — that's the source. Transactions also have an optional counterparty_account_id which points back to the same accounts table — that's a self-reference representing the receiving end of a transfer.
+So when customer A transfers money to customer B, one transaction row is created, the source is A's account and the counterparty is B's account. Both are in the same table.
+
+Officers and roles
+officer_roles defines what permissions exist — junior officer, senior officer, manager. Each compliance_officers row points to one role. An officer also belongs to one branch. Additionally, a branch optionally has one manager, which is a foreign key back to compliance_officers — another self-reference, this time between two different tables.
+
+The compliance trigger chain
+This is the most important chain in the system.
+When a transaction is inserted, the trigger reads every active compliance_rules row and checks if the transaction violates any rule. If it does, an alerts row is automatically created. That alert links to the transaction that caused it and the rule that matched it. The transaction then gets marked is_flagged = TRUE.
+So one transaction can trigger multiple alerts if it breaks multiple rules simultaneously — for example a large international transfer to a blacklisted country could trigger both the threshold rule and the geography rule at the same time.
+
+Alerts to cases — the escalation path
+An alert starts as open and gets assigned to a compliance officer. The officer investigates and can add notes via alert_comments — one alert can have many comments over time from different officers.
+When an alert is serious enough, it gets escalated into a case. This is where case_alerts comes in — it's a junction table connecting cases and alerts in a many-to-many relationship. One case can group many alerts about the same customer. One alert can technically appear in multiple cases. This is intentional — a pattern of suspicious behavior across multiple transactions gets investigated together as one case.
+
+Cases to regulatory reports
+A case is the full investigation. It belongs to one customer and one lead officer. When the investigation concludes as suspicious, the officer files a regulatory report — a SAR, CTR, or STR. One case produces one report. The report tracks which regulator received it, the submission date, and the deadline.
+
+Risk scores and patterns — the analytics layer
+risk_scores stores a history of risk ratings per customer. Every time the system, an AI agent, or an officer recomputes the risk, a new row is added — so you can see how a customer's risk evolved over time. It's not a single value that gets updated, it's an append-only history.
+transaction_patterns stores aggregated behavioral stats per customer — average transaction size, percentage of international transfers, typical countries. This is recomputed periodically and used to detect anomalies. If a customer who normally sends $200 domestically suddenly sends $50,000 internationally, the pattern table makes that obvious.
+
+Screening tables
+sanctions_list and pep_list are standalone reference tables. They don't have direct foreign keys to customers — in a real system the screening happens at onboarding time through a matching process, not a permanent FK join. In our schema you'd query them with a JOIN on name similarity when a new customer is registered.
+
+Audit log — the accountability layer
+Every meaningful action an officer takes gets recorded in audit_log. It can optionally reference a case or an alert depending on what was acted on. It also stores the officer's IP address. This table only ever gets new rows added — nothing is updated or deleted. That's what makes it a proper audit trail for regulatory examination.
+
+Monthly reports — the analytics summary
+monthly_reports has one row per branch per month. It stores pre-aggregated counts — total transactions, total alerts, cases opened, SARs filed. This is what your OLAP and rollup queries will operate on — rolling these up from branch level to city to country to global gives you the full compliance picture.
