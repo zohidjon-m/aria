@@ -6,7 +6,7 @@ still pending.
 
 ## Current Status
 
-The project has a strong sidecar foundation and phases 1-7 of the dynamic
+The project has a strong sidecar foundation and phases 1-11 of the dynamic
 intelligence plan are implemented for the alert triage path.
 
 Triage now runs a deterministic pre-screen gate before dynamic investigation.
@@ -14,8 +14,9 @@ Obvious false positives and obvious escalations are handled through the gate,
 while ambiguous alerts enter a bounded ReAct runtime with routed tools. The
 heuristic planner remains the default offline planner, and an optional LLM
 planner is available behind the same planner interface with strict mocked
-contract tests. The repo still does not have a multi-hop graph tracing tool,
-queryable trace tables or a shared deterministic confidence engine.
+contract tests. Multi-hop graph tracing, grounded reasoning validation, a shared
+deterministic confidence engine, and first-class queryable trace tables are
+implemented.
 
 ## Completed Foundation
 
@@ -160,9 +161,8 @@ Notes:
 - Unit tests cover the Phase 4 pre-screen gate classifications, live triage
   wiring, fallback behavior for ambiguous alerts, and validation of
   gate-produced recommendations.
-- Later phases still require a broader deterministic test suite for planning,
-  routing, behavioral baselines, graph tracing, grounded reasoning, and
-  confidence.
+- Later phase tests cover planning, routing, graph tracing, grounded reasoning,
+  deterministic confidence behavior, and queryable trace persistence.
 
 Relevant files:
 
@@ -171,6 +171,9 @@ Relevant files:
 - `tests/test_phase2_scope.py`
 - `tests/test_phase3_baseline.py`
 - `tests/test_phase4_pre_screen.py`
+- `tests/test_phase10_confidence_engine.py`
+- `tests/test_phase11_trace_persistence.py`
+- `tests/test_phase12_acceptance.py`
 
 Verification already run:
 
@@ -192,10 +195,10 @@ python -m compileall src tests scripts
 | ReAct runtime with heuristic planner | Completed for ambiguous triage | Ambiguous pre-screen alerts now use a bounded ReAct runtime with heuristic planning, routed tools, stop-reason disposition mapping, and persisted trace details. |
 | LLM planner behind same interface | Completed for planner contract | `LLMPlanner` implements the same planner protocol with strict JSON validation, routed-tool enforcement, bounded tool-arg validation, mocked tests, and optional OpenAI-compatible provider wiring. |
 | Graph tracing tool | Completed for runtime | `trace_money_flow` performs bounded multi-hop traversal through source-adapter graph edge reads and detects rapid pass-through, cycles, fan-out, many-to-one aggregation, high-risk endpoints, and linked alerts/cases. |
-| Sidecar trace persistence | Partially completed | Phase 6 persists runtime steps inside result details; first-class queryable trace tables remain pending. |
+| Sidecar trace persistence | Completed for alert triage | Triage runs now persist runtime version metadata, idempotency keys, pre-screen tool calls and observations, ReAct steps, hypotheses, typology routes, baseline snapshots, and money-flow paths in first-class sidecar tables while keeping existing JSON output details. |
 | Grounded reasoning validation | Completed | `AgentResult.reasoning` now uses source-referenced reasoning records and the validator checks reasoning statements with the same evidence rule as claims. |
-| Deterministic confidence engine | Not started | Current agents compute confidence internally; no shared calibrated confidence engine exists. |
-| Expanded test suite | Partially completed | Phase 1 registry/observation tests, Phase 2 scope-control tests, Phase 3 baseline tests, Phase 4 pre-screen gate tests, Phase 5 typology-router tests, Phase 6 runtime-control tests, Phase 7 mocked LLM-planner tests, Phase 8 graph-tracing tests, and Phase 9 grounded-reasoning tests exist. Later phase tests remain pending. |
+| Deterministic confidence engine | Completed for alert triage | `ConfidenceEngine` computes pre-screen and ReAct triage confidence from controlled runtime signals and persists an auditable `confidence_breakdown`; investigation, risk, and SAR confidence remain out of Phase 10 scope. |
+| Expanded test suite | Completed | Phase 1–11 unit tests exist. A dedicated `tests/test_phase12_acceptance.py` covers all 13 Phase 12 acceptance criteria explicitly: unbounded-arg rejection, unknown-tool guard, forbidden entity-field enforcement, repeated-call detection, max-steps → investigate (never false-positive), reasoning source-ref validation, 9 500 USD high/low-cash end-to-end scenarios, router tool-narrowing, graph edge-following, max-hops truncation, heuristic-planner-only run, and mocked LLM-planner contract. No live LLM calls are made in CI. |
 
 ## Completion Notes And Design Decisions
 
@@ -242,10 +245,7 @@ operators will need to query tool calls, observations, and graph signals.
 
 ## Next Implementation Step
 
-Start Phase 10:
-
-1. Add a shared deterministic confidence engine.
-2. Compute confidence from controlled signals such as evidence completeness,
-   baseline fit, typology corroboration, graph red flags, data limitations, and
-   stop reason.
-3. Remove agent-local confidence formulas where the shared engine applies.
+All 12 phases are complete. The next step is to wire the project for real bank
+source data (Phase 2 entity-scope enforcement in a live PostgreSQL environment)
+and run the acceptance suite against a staging database to validate the
+PostgreSQL adapter paths.

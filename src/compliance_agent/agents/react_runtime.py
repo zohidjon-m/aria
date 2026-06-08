@@ -7,7 +7,12 @@ from ..adapters.source import BankSourceRepository
 from ..domain import AgentResult, Claim, EvidenceItem, ReasoningItem, SourceRef
 from ..utils import clamp, new_id, stable_hash
 from .common import collect_evidence
-from .phase1_tools import build_phase1_tool_registry, build_scope_for_alert
+from .confidence import ConfidenceEngine
+from .phase1_tools import (
+    TOOL_REGISTRY_VERSION,
+    build_phase1_tool_registry,
+    build_scope_for_alert,
+)
 from .tooling import (
     ScopeViolationError,
     ToolArgumentError,
@@ -124,11 +129,13 @@ class ReActRuntime:
         registry: ToolRegistry | None = None,
         router: TypologyRouter | None = None,
         planner: Planner | None = None,
+        confidence_engine: ConfidenceEngine | None = None,
     ) -> None:
         self.config = config or ReActRuntimeConfig()
         self.registry = registry or build_phase1_tool_registry()
         self.router = router or TypologyRouter(self.registry)
         self.planner = planner or HeuristicPlanner()
+        self.confidence_engine = confidence_engine or ConfidenceEngine()
 
     def run_triage(
         self,
@@ -319,10 +326,11 @@ class ReActRuntime:
 
         final_stop_reason = stop_reason or MAX_STEPS_EXHAUSTED
         recommendation, score = self._recommendation(observations, final_stop_reason)
-        confidence = self._confidence(
-            observations=observations,
+        confidence_result = self.confidence_engine.compute_react(
+            recommendation=recommendation,
             stop_reason=final_stop_reason,
-            evidence_count=len(collect_evidence(alert_context)),
+            observations=observations,
+            reason_codes=list(getattr(pre_screen_result, "reason_codes", [])),
         )
         reasoning = self._reasoning(
             alert_id=alert_id,
@@ -339,6 +347,8 @@ class ReActRuntime:
         )
         evidence = self._evidence(alert_context, observations)
         customer = alert_context.get("customer") or {}
+        planner_type = getattr(self.planner, "planner_type", "unknown")
+        planner_metadata = self._planner_metadata()
 
         details = {
             "recommendation_id": new_id("rec"),
@@ -346,10 +356,15 @@ class ReActRuntime:
             "triage_path": "pre_screen_ambiguous_react",
             "activated_typologies": list(route.activated),
             "human_required": True,
+            "confidence_breakdown": confidence_result.to_details(),
+            "runtime_version": self._runtime_version_details(
+                planner_type=planner_type,
+                planner_metadata=planner_metadata,
+            ),
             "typology_route": route.to_details(),
             "react_runtime": {
-                "planner": getattr(self.planner, "planner_type", "unknown"),
-                "planner_metadata": self._planner_metadata(),
+                "planner": planner_type,
+                "planner_metadata": planner_metadata,
                 "stop_reason": final_stop_reason,
                 "max_steps": self.config.max_steps,
                 "max_tool_calls": self.config.max_tool_calls,
@@ -374,7 +389,7 @@ class ReActRuntime:
             subject_type="alert",
             subject_id=alert_id,
             recommendation=recommendation,
-            confidence=confidence,
+            confidence=confidence_result.final_confidence,
             score=score,
             reasoning=reasoning,
             claims=claims,
@@ -389,6 +404,24 @@ class ReActRuntime:
             if value:
                 metadata[attr] = value
         return metadata
+
+    def _runtime_version_details(
+        self,
+        *,
+        planner_type: str,
+        planner_metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "planner_type": planner_type,
+            "model_id": planner_metadata.get("model_id"),
+            "prompt_version": planner_metadata.get("prompt_version", ""),
+            "tool_registry_version": TOOL_REGISTRY_VERSION,
+            "runtime_bounds": {
+                "max_steps": self.config.max_steps,
+                "max_tool_calls": self.config.max_tool_calls,
+                "allowed_dispositions": list(self.config.allowed_dispositions),
+            },
+        }
 
     def _pre_screen_inputs(self, pre_screen_result: Any | None) -> tuple[dict[str, Any], dict[str, Any]]:
         if pre_screen_result is None:
@@ -507,24 +540,6 @@ class ReActRuntime:
         if baseline == "consistent":
             return 25.0
         return 58.0
-
-    def _confidence(
-        self,
-        *,
-        observations: dict[str, ToolObservation],
-        stop_reason: str,
-        evidence_count: int,
-    ) -> float:
-        if stop_reason == CRITICAL_SIGNAL_FOUND:
-            return 0.9
-        if stop_reason in {MAX_STEPS_EXHAUSTED, TOOL_ERROR, SCHEMA_ERROR, NO_PROGRESS}:
-            return 0.52
-        completeness_bonus = 0.05 if all(
-            observation.data_completeness.complete for observation in observations.values()
-        ) else 0.0
-        evidence_bonus = min(0.08, evidence_count / 200)
-        base = 0.58 if stop_reason == INSUFFICIENT_EVIDENCE else 0.68
-        return round(clamp(base + completeness_bonus + evidence_bonus, 0, 0.95), 2)
 
     def _reasoning(
         self,

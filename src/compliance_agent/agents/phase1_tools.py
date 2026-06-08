@@ -39,6 +39,8 @@ PHASE1_TOOL_NAMES = {
     "trace_money_flow",
 }
 
+TOOL_REGISTRY_VERSION = "phase1_tools_v1"
+
 
 def build_phase1_tool_registry() -> ToolRegistry:
     return ToolRegistry(

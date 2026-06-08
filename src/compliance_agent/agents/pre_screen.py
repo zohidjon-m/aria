@@ -7,7 +7,12 @@ from ..adapters.source import BankSourceRepository
 from ..domain import AgentResult, Claim, EvidenceItem, ReasoningItem, SourceRef
 from ..utils import clamp, new_id
 from .common import collect_evidence
-from .phase1_tools import build_phase1_tool_registry, build_scope_for_alert
+from .confidence import ConfidenceEngine
+from .phase1_tools import (
+    TOOL_REGISTRY_VERSION,
+    build_phase1_tool_registry,
+    build_scope_for_alert,
+)
 from .tooling import ToolExecutionContext, ToolObservation, ToolRegistry
 
 
@@ -55,6 +60,7 @@ class PreScreenResult:
     reasoning: list[ReasoningItem]
     claims: list[Claim]
     evidence: list[EvidenceItem]
+    confidence_breakdown: dict[str, Any]
     tool_observations: dict[str, ToolObservation]
     limitations: list[dict[str, Any]]
     baseline_assessment: str
@@ -76,6 +82,8 @@ class PreScreenResult:
                 "customer_id": self.customer_id,
                 "triage_path": "pre_screen_gate",
                 "pre_screen_gate": self.to_details(),
+                "confidence_breakdown": dict(self.confidence_breakdown),
+                "runtime_version": self.runtime_version_details(),
                 "baseline_assessment": self.baseline_assessment,
                 "reason_codes": list(self.reason_codes),
                 "selected_typology_signals": dict(self.selected_typology_signals),
@@ -83,11 +91,23 @@ class PreScreenResult:
             },
         )
 
+    def runtime_version_details(self) -> dict[str, Any]:
+        return {
+            "planner_type": "pre_screen_gate",
+            "model_id": None,
+            "prompt_version": "",
+            "tool_registry_version": TOOL_REGISTRY_VERSION,
+            "runtime_bounds": {
+                "always_run_tools": list(ALWAYS_RUN_TOOLS),
+            },
+        }
+
     def to_details(self) -> dict[str, Any]:
         return {
             "gate_decision": self.gate_decision,
             "recommended_disposition": self.recommended_disposition,
             "confidence": self.confidence,
+            "confidence_breakdown": dict(self.confidence_breakdown),
             "score": self.score,
             "reason_codes": list(self.reason_codes),
             "baseline_assessment": self.baseline_assessment,
@@ -103,8 +123,13 @@ class PreScreenResult:
 class PreScreenGate:
     """Cheap deterministic triage gate before deeper investigation."""
 
-    def __init__(self, registry: ToolRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry | None = None,
+        confidence_engine: ConfidenceEngine | None = None,
+    ) -> None:
         self.registry = registry or build_phase1_tool_registry()
+        self.confidence_engine = confidence_engine or ConfidenceEngine()
 
     def run(self, source: BankSourceRepository, alert_id: int) -> PreScreenResult:
         alert_context = source.get_alert_context(alert_id)
@@ -174,10 +199,15 @@ class PreScreenGate:
             "obvious_escalate": "escalate",
             "ambiguous": "investigate",
         }[gate_decision]
-        score, confidence = self._score_and_confidence(
+        score = self._score(
             gate_decision=gate_decision,
             reason_codes=reason_codes,
-            baseline_observation=observations["compute_behavioral_baseline"],
+        )
+        confidence_result = self.confidence_engine.compute_pre_screen(
+            recommendation=recommended_disposition,
+            gate_decision=gate_decision,
+            observations=observations,
+            reason_codes=reason_codes,
         )
         evidence = self._evidence(alert_context, observations)
 
@@ -186,7 +216,7 @@ class PreScreenGate:
             customer_id=customer_id,
             gate_decision=gate_decision,
             recommended_disposition=recommended_disposition,
-            confidence=confidence,
+            confidence=confidence_result.final_confidence,
             score=score,
             reason_codes=reason_codes,
             reasoning=self._reasoning(
@@ -207,6 +237,7 @@ class PreScreenGate:
                 observations=observations,
             ),
             evidence=evidence,
+            confidence_breakdown=confidence_result.to_details(),
             tool_observations=observations,
             limitations=self._limitations(observations),
             baseline_assessment=baseline_assessment,
@@ -299,20 +330,18 @@ class PreScreenGate:
         }
         return any(code in hard_red_flags for code in reason_codes)
 
-    def _score_and_confidence(
+    def _score(
         self,
         *,
         gate_decision: str,
         reason_codes: list[str],
-        baseline_observation: ToolObservation,
-    ) -> tuple[float, float]:
+    ) -> float:
         if gate_decision == "obvious_escalate":
             hard_flag_bonus = 8 if self._hard_red_flag_present(reason_codes) else 0
-            return clamp(82 + hard_flag_bonus, 0, 100), 0.9 if hard_flag_bonus else 0.84
+            return clamp(82 + hard_flag_bonus, 0, 100)
         if gate_decision == "obvious_clear":
-            complete_bonus = 0.03 if baseline_observation.data_completeness.complete else 0
-            return 15.0, round(clamp(0.84 + complete_bonus, 0, 0.95), 2)
-        return 50.0, 0.58
+            return 15.0
+        return 50.0
 
     def _reasoning(
         self,
