@@ -1,0 +1,599 @@
+{
+  "$defs": {
+    "AgentObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "data_completeness": {
+          "$ref": "#/$defs/DataCompleteness"
+        },
+        "facts": {
+          "additionalProperties": true,
+          "title": "Facts",
+          "type": "object"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/MCPSourceRef"
+          },
+          "title": "Source Refs",
+          "type": "array"
+        },
+        "step_number": {
+          "minimum": 1,
+          "title": "Step Number",
+          "type": "integer"
+        },
+        "tool_name": {
+          "minLength": 1,
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step_number",
+        "tool_name"
+      ],
+      "title": "AgentObservation",
+      "type": "object"
+    },
+    "AgentToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "audit_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audit Id"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "partial",
+            "denied",
+            "error"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "step_number": {
+          "minimum": 1,
+          "title": "Step Number",
+          "type": "integer"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Reason"
+        },
+        "tool_args": {
+          "additionalProperties": true,
+          "title": "Tool Args",
+          "type": "object"
+        },
+        "tool_name": {
+          "minLength": 1,
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step_number",
+        "tool_name",
+        "status"
+      ],
+      "title": "AgentToolCall",
+      "type": "object"
+    },
+    "AgentTraceStep": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "hypothesis_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hypothesis After"
+        },
+        "hypothesis_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hypothesis Before"
+        },
+        "status": {
+          "enum": [
+            "planning",
+            "tool_executed",
+            "observing",
+            "revising",
+            "proposed",
+            "failed_safe"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "step_number": {
+          "minimum": 1,
+          "title": "Step Number",
+          "type": "integer"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Reason"
+        },
+        "thought": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thought"
+        },
+        "tool_args": {
+          "additionalProperties": true,
+          "title": "Tool Args",
+          "type": "object"
+        },
+        "tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name"
+        }
+      },
+      "required": [
+        "step_number",
+        "status"
+      ],
+      "title": "AgentTraceStep",
+      "type": "object"
+    },
+    "DataCompleteness": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "default": true,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "lookback_days_available": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookback Days Available"
+        },
+        "lookback_days_requested": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookback Days Requested"
+        },
+        "missing_segments": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Segments",
+          "type": "array"
+        },
+        "rows_requested": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rows Requested"
+        },
+        "rows_returned": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rows Returned"
+        }
+      },
+      "title": "DataCompleteness",
+      "type": "object"
+    },
+    "FactualClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/MCPSourceRef"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "statement": {
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "title": "FactualClaim",
+      "type": "object"
+    },
+    "MCPSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "minLength": 1,
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "field_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Field Names",
+          "type": "array"
+        },
+        "retrieved_at": {
+          "minLength": 1,
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "source_system": {
+          "default": "bank_mcp",
+          "title": "Source System",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_type",
+        "entity_id",
+        "retrieved_at"
+      ],
+      "title": "MCPSourceRef",
+      "type": "object"
+    },
+    "RuntimeBounds": {
+      "additionalProperties": false,
+      "properties": {
+        "max_graph_hops": {
+          "default": 4,
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Max Graph Hops",
+          "type": "integer"
+        },
+        "max_rows": {
+          "default": 100,
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Max Rows",
+          "type": "integer"
+        },
+        "max_steps": {
+          "default": 6,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Max Steps",
+          "type": "integer"
+        },
+        "max_tool_calls": {
+          "default": 6,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Max Tool Calls",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "default": 60.0,
+          "maximum": 600.0,
+          "minimum": 1.0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "title": "RuntimeBounds",
+      "type": "object"
+    },
+    "SubjectRef": {
+      "additionalProperties": false,
+      "properties": {
+        "alert_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alert Id"
+        },
+        "case_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Case Id"
+        },
+        "customer_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Id"
+        }
+      },
+      "title": "SubjectRef",
+      "type": "object"
+    },
+    "ValidationStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "not_run"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "unsupported_claim_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unsupported Claim Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ValidationStatus",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "data_completeness": {
+      "$ref": "#/$defs/DataCompleteness"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/MCPSourceRef"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "factual_claims": {
+      "items": {
+        "$ref": "#/$defs/FactualClaim"
+      },
+      "title": "Factual Claims",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "model_version": {
+      "minLength": 1,
+      "title": "Model Version",
+      "type": "string"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/AgentObservation"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "policy_version": {
+      "minLength": 1,
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "prompt_version": {
+      "minLength": 1,
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "recommendation": {
+      "enum": [
+        "likely_false_positive",
+        "needs_investigation",
+        "escalate"
+      ],
+      "title": "Recommendation",
+      "type": "string"
+    },
+    "required_human_action": {
+      "minLength": 1,
+      "title": "Required Human Action",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "runtime_bounds": {
+      "$ref": "#/$defs/RuntimeBounds"
+    },
+    "score": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Score",
+      "type": "number"
+    },
+    "structured_reasoning": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Structured Reasoning",
+      "type": "array"
+    },
+    "subject": {
+      "$ref": "#/$defs/SubjectRef"
+    },
+    "tenant_id": {
+      "minLength": 1,
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "tool_calls": {
+      "items": {
+        "$ref": "#/$defs/AgentToolCall"
+      },
+      "title": "Tool Calls",
+      "type": "array"
+    },
+    "tool_registry_version": {
+      "minLength": 1,
+      "title": "Tool Registry Version",
+      "type": "string"
+    },
+    "trace": {
+      "items": {
+        "$ref": "#/$defs/AgentTraceStep"
+      },
+      "title": "Trace",
+      "type": "array"
+    },
+    "validation_status": {
+      "$ref": "#/$defs/ValidationStatus"
+    }
+  },
+  "required": [
+    "run_id",
+    "tenant_id",
+    "subject",
+    "recommendation",
+    "confidence",
+    "score",
+    "required_human_action",
+    "model_version",
+    "prompt_version",
+    "tool_registry_version",
+    "policy_version",
+    "runtime_bounds",
+    "validation_status"
+  ],
+  "title": "AgentProposal",
+  "type": "object"
+}

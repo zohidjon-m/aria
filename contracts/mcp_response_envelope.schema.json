@@ -1,0 +1,204 @@
+{
+  "$defs": {
+    "DataCompleteness": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "default": true,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "lookback_days_available": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookback Days Available"
+        },
+        "lookback_days_requested": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lookback Days Requested"
+        },
+        "missing_segments": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Segments",
+          "type": "array"
+        },
+        "rows_requested": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rows Requested"
+        },
+        "rows_returned": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rows Returned"
+        }
+      },
+      "title": "DataCompleteness",
+      "type": "object"
+    },
+    "MCPSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "minLength": 1,
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "field_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Field Names",
+          "type": "array"
+        },
+        "retrieved_at": {
+          "minLength": 1,
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "source_system": {
+          "default": "bank_mcp",
+          "title": "Source System",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_type",
+        "entity_id",
+        "retrieved_at"
+      ],
+      "title": "MCPSourceRef",
+      "type": "object"
+    },
+    "PolicyDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "allow",
+            "deny",
+            "limit",
+            "audit"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "policy": {
+          "minLength": 1,
+          "title": "Policy",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "policy",
+        "reason"
+      ],
+      "title": "PolicyDecision",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "audit_id": {
+      "minLength": 1,
+      "title": "Audit Id",
+      "type": "string"
+    },
+    "data_completeness": {
+      "$ref": "#/$defs/DataCompleteness"
+    },
+    "facts": {
+      "additionalProperties": true,
+      "title": "Facts",
+      "type": "object"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "policy_decisions": {
+      "items": {
+        "$ref": "#/$defs/PolicyDecision"
+      },
+      "title": "Policy Decisions",
+      "type": "array"
+    },
+    "source_refs": {
+      "items": {
+        "$ref": "#/$defs/MCPSourceRef"
+      },
+      "title": "Source Refs",
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "partial",
+        "denied",
+        "error"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "audit_id"
+  ],
+  "title": "MCPResponseEnvelope",
+  "type": "object"
+}

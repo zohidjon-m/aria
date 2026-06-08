@@ -1,0 +1,178 @@
+{
+  "$defs": {
+    "RuntimeBounds": {
+      "additionalProperties": false,
+      "properties": {
+        "max_graph_hops": {
+          "default": 4,
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Max Graph Hops",
+          "type": "integer"
+        },
+        "max_rows": {
+          "default": 100,
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Max Rows",
+          "type": "integer"
+        },
+        "max_steps": {
+          "default": 6,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Max Steps",
+          "type": "integer"
+        },
+        "max_tool_calls": {
+          "default": 6,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Max Tool Calls",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "default": 60.0,
+          "maximum": 600.0,
+          "minimum": 1.0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "title": "RuntimeBounds",
+      "type": "object"
+    },
+    "SubjectRef": {
+      "additionalProperties": false,
+      "properties": {
+        "alert_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alert Id"
+        },
+        "case_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Case Id"
+        },
+        "customer_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Id"
+        }
+      },
+      "title": "SubjectRef",
+      "type": "object"
+    },
+    "ToolExecutionScope": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_account_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Account Ids",
+          "type": "array"
+        },
+        "allowed_case_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Case Ids",
+          "type": "array"
+        },
+        "allowed_customer_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Customer Ids",
+          "type": "array"
+        },
+        "allowed_transaction_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Transaction Ids",
+          "type": "array"
+        }
+      },
+      "title": "ToolExecutionScope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "officer_id": {
+      "minLength": 1,
+      "title": "Officer Id",
+      "type": "string"
+    },
+    "purpose": {
+      "default": "triage",
+      "enum": [
+        "triage",
+        "investigation",
+        "risk_scoring",
+        "sar_drafting",
+        "evaluation"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "runtime_bounds": {
+      "$ref": "#/$defs/RuntimeBounds"
+    },
+    "scenario": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scenario"
+    },
+    "scope": {
+      "$ref": "#/$defs/ToolExecutionScope"
+    },
+    "subject": {
+      "$ref": "#/$defs/SubjectRef"
+    },
+    "tenant_id": {
+      "minLength": 1,
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "officer_id",
+    "subject",
+    "scope"
+  ],
+  "title": "AgentRunRequest",
+  "type": "object"
+}

@@ -9,6 +9,7 @@ description = "Read-only AML investigation sidecar with auditable agent outputs"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi",
+  "mcp",
   "uvicorn[standard]",
   "psycopg2-binary",
   "python-dotenv",
