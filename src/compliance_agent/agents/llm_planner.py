@@ -54,7 +54,6 @@ class OpenAICompatibleChatProvider:
         payload = {
             "model": model,
             "messages": messages,
-            "temperature": 0,
             "response_format": {"type": "json_object"},
         }
         request = urllib.request.Request(

@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import site
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SRC = os.path.join(ROOT, "src")
 DEPS = os.path.join(ROOT, ".codex_deps")
+if os.path.isdir(DEPS):
+    site.addsitedir(DEPS)
 for path in (SRC, ROOT, DEPS):
     if os.path.isdir(path) and path not in sys.path:
         sys.path.insert(0, path)
@@ -70,6 +73,8 @@ def main() -> None:
         "--sidecar-db-path",
         default=os.getenv("SIDECAR_DB_PATH", os.path.join(ROOT, "data", "phase1_live_sidecar.sqlite3")),
     )
+    parser.add_argument("--max-steps", default=6, type=int)
+    parser.add_argument("--max-tool-calls", default=6, type=int)
     parser.add_argument(
         "--skip-fixtures",
         action="store_true",
@@ -96,7 +101,12 @@ def main() -> None:
             allowed_transaction_ids=[scenario["transaction_id"]],
             allowed_case_ids=[],
         ),
-        runtime_bounds=RuntimeBounds(max_steps=6, max_tool_calls=6, max_rows=100, max_graph_hops=4),
+        runtime_bounds=RuntimeBounds(
+            max_steps=args.max_steps,
+            max_tool_calls=args.max_tool_calls,
+            max_rows=100,
+            max_graph_hops=4,
+        ),
     )
     model_id = os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5"
     if not model_id:
