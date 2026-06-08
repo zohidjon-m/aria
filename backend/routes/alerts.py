@@ -82,11 +82,11 @@ def list_alerts(
                 ) AS has_case,
                 EXISTS(
                     SELECT 1 FROM sanctions_list sl
-                    WHERE sl.is_active = TRUE AND sl.full_name ILIKE '%' || c.full_name || '%'
+                    WHERE sl.is_active = TRUE AND sl.full_name ILIKE '%%' || c.full_name || '%%'
                 ) AS has_sanctions_hit,
                 EXISTS(
                     SELECT 1 FROM pep_list pl
-                    WHERE pl.is_active = TRUE AND pl.full_name ILIKE '%' || c.full_name || '%'
+                    WHERE pl.is_active = TRUE AND pl.full_name ILIKE '%%' || c.full_name || '%%'
                 ) AS has_pep_hit
             FROM alerts al
             JOIN compliance_rules cr ON cr.rule_id = al.rule_id
@@ -124,11 +124,11 @@ def get_alert(alert_id: int, officer: dict = Depends(require_view)) -> dict:
                 co.full_name AS officer_name,
                 EXISTS(
                     SELECT 1 FROM sanctions_list sl
-                    WHERE sl.is_active = TRUE AND sl.full_name ILIKE '%' || c.full_name || '%'
+                    WHERE sl.is_active = TRUE AND sl.full_name ILIKE '%%' || c.full_name || '%%'
                 ) AS has_sanctions_hit,
                 EXISTS(
                     SELECT 1 FROM pep_list pl
-                    WHERE pl.is_active = TRUE AND pl.full_name ILIKE '%' || c.full_name || '%'
+                    WHERE pl.is_active = TRUE AND pl.full_name ILIKE '%%' || c.full_name || '%%'
                 ) AS has_pep_hit
             FROM alerts al
             JOIN compliance_rules cr ON cr.rule_id = al.rule_id
