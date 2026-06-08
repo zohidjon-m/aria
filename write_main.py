@@ -1,4 +1,8 @@
-from __future__ import annotations
+import pathlib
+
+BACKEND = pathlib.Path("D:/sejong_major/projects/compliance-agent/backend")
+
+(BACKEND / "main.py").write_text(r"""from __future__ import annotations
 
 import logging
 
@@ -29,3 +33,6 @@ app.include_router(customers.router, prefix="/api")
 app.include_router(cases.router, prefix="/api")
 app.include_router(audit_log.router, prefix="/api")
 app.include_router(agent_runs.router, prefix="/api")
+""", encoding="utf-8")
+
+print("main.py written.")
