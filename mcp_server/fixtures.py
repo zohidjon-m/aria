@@ -27,6 +27,7 @@ def load_phase1_fixtures(database_url: str | None = None) -> None:
 
 
 def _insert_fixtures(cur: Any) -> None:
+    _sync_serial_sequences(cur)
     cur.executemany(
         """
         INSERT INTO countries (country_code, country_name, fatf_status, risk_score, is_sanctioned)
@@ -221,3 +222,36 @@ def _insert_fixtures(cur: Any) -> None:
         ON CONFLICT (case_id, alert_id) DO NOTHING
         """
     )
+
+
+def _sync_serial_sequences(cur: Any) -> None:
+    """Keep trigger-generated IDs from colliding with explicitly seeded rows."""
+
+    for table_name, column_name in (
+        ("countries", "country_code"),
+        ("officer_roles", "role_id"),
+        ("branches", "branch_id"),
+        ("compliance_officers", "officer_id"),
+        ("compliance_rules", "rule_id"),
+        ("customers", "customer_id"),
+        ("accounts", "account_id"),
+        ("transactions", "transaction_id"),
+        ("alerts", "alert_id"),
+        ("transaction_patterns", "pattern_id"),
+        ("cases", "case_id"),
+    ):
+        cur.execute(
+            """
+            SELECT pg_get_serial_sequence(%s, %s)
+            """,
+            (table_name, column_name),
+        )
+        sequence = cur.fetchone()[0]
+        if not sequence:
+            continue
+        cur.execute(
+            f"""
+            SELECT setval(%s, COALESCE((SELECT MAX({column_name}) FROM {table_name}), 1), TRUE)
+            """,
+            (sequence,),
+        )

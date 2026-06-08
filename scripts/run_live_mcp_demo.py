@@ -15,6 +15,8 @@ for path in (SRC, ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+from dotenv import load_dotenv
+
 from compliance_agent.adapters.sidecar_store import SidecarStore
 from compliance_agent.agents.live_mcp_demo import (
     LiveMCPAgent,
@@ -29,6 +31,8 @@ from compliance_agent.contracts.phase1 import (
     ToolExecutionScope,
 )
 from mcp_server.fixtures import load_phase1_fixtures
+
+load_dotenv(os.path.join(ROOT, ".env"))
 
 
 SCENARIOS = {
@@ -94,7 +98,7 @@ def main() -> None:
         ),
         runtime_bounds=RuntimeBounds(max_steps=6, max_tool_calls=6, max_rows=100, max_graph_hops=4),
     )
-    model_id = os.getenv("LLM_MODEL")
+    model_id = os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5"
     if not model_id:
         raise ValueError("LLM_MODEL is required for the live MCP demo.")
 

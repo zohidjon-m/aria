@@ -69,6 +69,9 @@ class OpenAICompatibleChatProvider:
         try:
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 raw = response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise PlannerProviderError(f"HTTP {exc.code}: {body}") from exc
         except (urllib.error.URLError, TimeoutError) as exc:
             raise PlannerProviderError(str(exc)) from exc
 

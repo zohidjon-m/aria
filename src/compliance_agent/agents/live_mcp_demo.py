@@ -517,9 +517,9 @@ class LiveMCPAgent:
 
 
 def build_live_provider_from_env() -> OpenAICompatibleChatProvider:
-    api_key = os.getenv("LLM_API_KEY")
+    api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("LLM_API_KEY is required for the live MCP demo.")
+        raise ValueError("LLM_API_KEY or OPENAI_API_KEY is required for the live MCP demo.")
     return OpenAICompatibleChatProvider(
         api_key=api_key,
         endpoint=os.getenv("LLM_ENDPOINT", "https://api.openai.com/v1/chat/completions"),
