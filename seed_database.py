@@ -65,6 +65,37 @@ def run(label, fn, conn):
     print("done")
 
 
+def fix_sequences(conn):
+    """Realign every serial/identity sequence to MAX(id).
+
+    Rows are inserted with explicit primary-key values, which does NOT advance
+    the owning sequence. Without this, the first post-seed INSERT collides with
+    an existing id and raises UniqueViolation. Run once after all seeding.
+    """
+    print("  Realigning sequences...", end=" ", flush=True)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT c.relname AS table_name, a.attname AS column_name
+        FROM pg_class c
+        JOIN pg_attribute a ON a.attrelid = c.oid
+        WHERE c.relkind = 'r'
+          AND c.relnamespace = 'public'::regnamespace
+          AND pg_get_serial_sequence(c.relname, a.attname) IS NOT NULL
+        """
+    )
+    targets = cur.fetchall()
+    for table_name, column_name in targets:
+        cur.execute(
+            f"SELECT setval(pg_get_serial_sequence(%s, %s), "
+            f"COALESCE((SELECT MAX({column_name}) FROM {table_name}), 1))",
+            (table_name, column_name),
+        )
+    conn.commit()
+    cur.close()
+    print(f"done ({len(targets)} sequences)")
+
+
 # ── SEEDERS ──────────────────────────────────────────────────────────────────
 
 def seed_countries(cur):
@@ -710,6 +741,8 @@ def main():
 
     for label, fn in remaining:
         run(label, fn, conn)
+
+    fix_sequences(conn)
 
     conn.close()
 
