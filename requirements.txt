@@ -1,6 +1,9 @@
 fastapi
+faker
 mcp
+openai
 uvicorn[standard]
 psycopg2-binary
 python-dotenv
 pydantic
+sse-starlette

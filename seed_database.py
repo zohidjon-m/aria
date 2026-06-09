@@ -20,6 +20,7 @@ Usage:
     python seed_database.py
 """
 
+import os
 import psycopg2
 from psycopg2.extras import execute_batch
 from faker import Faker
@@ -28,12 +29,14 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 # ── CONFIG ──────────────────────────────────────────────────────────────────
+# Honours standard libpq env vars (PGHOST/PGPORT/...) so the same script runs
+# locally (defaults to localhost) and inside Docker (PGHOST=db).
 DB_CONFIG = {
-    "host":     "localhost",
-    "port":     5432,
-    "dbname":   "aml_platform",
-    "user":     "postgres",
-    "password": "postgres",
+    "host":     os.getenv("PGHOST", "localhost"),
+    "port":     int(os.getenv("PGPORT", "5432")),
+    "dbname":   os.getenv("PGDATABASE", "aml_platform"),
+    "user":     os.getenv("PGUSER", "postgres"),
+    "password": os.getenv("PGPASSWORD", "postgres"),
 }
 
 N_OFFICERS       = 30

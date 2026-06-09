@@ -1,0 +1,72 @@
+# Open AML Compliance Sidecar: optional local demo stack
+#
+#   docker compose up --build
+#
+# Then open the workbench at  http://localhost:5173
+#   - API:      http://localhost:8000  (docs at /docs)
+# On first start the Postgres schema is created from scheme.sql and the backend
+# seeds the database automatically. LLM keys are optional (the agent falls back
+# to the heuristic planner); set them in a .env file to enable the LLM planner.
+# The Postgres credentials below are demo-only defaults for local evaluation.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: aml_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Schema is applied once, on first init of an empty data volume.
+      - ./scheme.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      # Host 5433 -> container 5432, so the Dockerized DB does not clash with a
+      # local Postgres on 5432. (The backend talks to it internally as db:5432.)
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aml_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # libpq vars consumed by seed_database.py
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: aml_platform
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      # consumed by the FastAPI app / agent sidecar
+      BANK_SOURCE_DSN: postgresql://postgres:postgres@db:5432/aml_platform
+      DEMO_MODE: "false"
+      SIDECAR_DB_PATH: /app/data/sidecar.sqlite3
+      PLANNER_TYPE: ${PLANNER_TYPE:-heuristic}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_ENDPOINT: ${LLM_ENDPOINT:-https://api.openai.com/v1/chat/completions}
+    ports:
+      - "8000:8000"
+    restart: on-failure
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser runs on the host, so it reaches the backend at the published port.
+        VITE_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:

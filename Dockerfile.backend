@@ -1,0 +1,26 @@
+# Open AML Compliance Sidecar demo backend (FastAPI + agent sidecar)
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# Install the sidecar package and runtime dependencies first for layer caching.
+COPY pyproject.toml requirements.txt ./
+COPY src ./src
+RUN pip install --upgrade pip \
+    && pip install -e . -r requirements.txt
+
+# Application code (kept after deps so edits don't bust the pip cache layer).
+COPY backend ./backend
+COPY seed_database.py ./
+COPY docker/backend-entrypoint.sh /usr/local/bin/entrypoint.sh
+# Strip any CR (in case of CRLF checkout on Windows) and make executable.
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh \
+    && mkdir -p /app/data
+
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
