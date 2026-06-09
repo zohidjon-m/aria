@@ -1,0 +1,11 @@
+.venv
+.git
+.claude
+node_modules
+frontend
+dist
+**/__pycache__
+**/*.pyc
+*.log
+data/*.sqlite3
+.env

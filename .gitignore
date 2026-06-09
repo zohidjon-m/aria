@@ -1,4 +1,4 @@
-# Environment — never commit real credentials
+# Environment - never commit real credentials
 .env
 
 # Python
@@ -22,6 +22,7 @@ frontend/node_modules/
 frontend/dist/
 
 # IDE
+.claude/
 .vscode/
 .idea/
 
