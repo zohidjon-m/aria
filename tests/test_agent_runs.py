@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -151,6 +152,147 @@ class TestTriageRunEndpoint(unittest.TestCase):
         self.assertEqual(resp.status_code, 503)
 
 
+class TestLiveMcpTriageRunEndpoint(unittest.TestCase):
+    def _settings(self, *, api_key="test-key", model="test-model"):
+        return SimpleNamespace(
+            bank_source_dsn="postgresql://example.invalid/db",
+            sidecar_db_path="data/test-sidecar.sqlite3",
+            llm_api_key=api_key,
+            llm_model=model,
+            llm_endpoint="https://example.invalid/v1/chat/completions",
+            llm_timeout_seconds=30.0,
+        )
+
+    def _mock_rbac(self, mock_rbac_ro):
+        rbac_cur = MagicMock()
+        rbac_cur.fetchone.return_value = OFFICER_FIXTURE
+        rbac_cur.__enter__ = MagicMock(return_value=rbac_cur)
+        rbac_cur.__exit__ = MagicMock(return_value=False)
+        mock_rbac_ro.return_value = rbac_cur
+
+    def _mock_audit(self, mock_rw):
+        conn = MagicMock()
+        cur = MagicMock()
+        cur.__enter__ = MagicMock(return_value=cur)
+        cur.__exit__ = MagicMock(return_value=False)
+        conn.cursor.return_value = cur
+        conn.__enter__ = MagicMock(return_value=conn)
+        conn.__exit__ = MagicMock(return_value=False)
+        mock_rw.return_value = conn
+
+    @patch("backend.routes.agent_runs.rw_conn")
+    @patch("backend.routes.agent_runs.LiveMCPWorkflowAgent")
+    @patch("backend.routes.agent_runs.PostgresReferenceRepository")
+    @patch("backend.routes.agent_runs.Settings.from_env")
+    @patch("backend.rbac.ro_cursor")
+    def test_live_mcp_triage_run_ok(
+        self,
+        mock_rbac_ro,
+        mock_settings,
+        mock_repo_cls,
+        mock_agent_cls,
+        mock_rw,
+    ):
+        self._mock_rbac(mock_rbac_ro)
+        self._mock_audit(mock_rw)
+        mock_settings.return_value = self._settings()
+        repo = MagicMock()
+        repo.get_alert_scope.return_value = {
+            "alert_id": 1,
+            "customer_id": 10,
+            "account_id": 20,
+            "transaction_id": 30,
+        }
+        mock_repo_cls.return_value = repo
+        agent = MagicMock()
+        agent.run_and_persist.return_value = {
+            "run_id": "run-live123",
+            "proposal": {"recommendation": "needs_investigation"},
+            "result": {"recommendation": "needs_investigation"},
+            "validation": {"status": "passed"},
+        }
+        mock_agent_cls.return_value = agent
+
+        client = make_client()
+        resp = client.post("/api/agent-runs/live-mcp-triage", json={"alert_id": 1}, headers=HEADERS)
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["run_id"], "run-live123")
+        agent.run_and_persist.assert_called_once()
+        self.assertEqual(agent.run_and_persist.call_args.args[0], "triage")
+
+    @patch("backend.routes.agent_runs.PostgresReferenceRepository")
+    @patch("backend.routes.agent_runs.Settings.from_env")
+    @patch("backend.rbac.ro_cursor")
+    def test_live_mcp_triage_404_on_missing_alert_scope(
+        self,
+        mock_rbac_ro,
+        mock_settings,
+        mock_repo_cls,
+    ):
+        self._mock_rbac(mock_rbac_ro)
+        mock_settings.return_value = self._settings()
+        repo = MagicMock()
+        repo.get_alert_scope.return_value = None
+        mock_repo_cls.return_value = repo
+
+        client = make_client()
+        resp = client.post("/api/agent-runs/live-mcp-triage", json={"alert_id": 999}, headers=HEADERS)
+
+        self.assertEqual(resp.status_code, 404)
+
+    @patch("backend.routes.agent_runs.os.getenv")
+    @patch("backend.routes.agent_runs.Settings.from_env")
+    @patch("backend.rbac.ro_cursor")
+    def test_live_mcp_triage_503_on_missing_llm_config(
+        self,
+        mock_rbac_ro,
+        mock_settings,
+        mock_getenv,
+    ):
+        self._mock_rbac(mock_rbac_ro)
+        mock_settings.return_value = self._settings(api_key=None, model=None)
+        mock_getenv.return_value = None
+
+        client = make_client()
+        resp = client.post("/api/agent-runs/live-mcp-triage", json={"alert_id": 1}, headers=HEADERS)
+
+        self.assertEqual(resp.status_code, 503)
+        self.assertIn("LLM_API_KEY", resp.json()["detail"])
+
+    @patch("backend.routes.agent_runs.LiveMCPWorkflowAgent")
+    @patch("backend.routes.agent_runs.PostgresReferenceRepository")
+    @patch("backend.routes.agent_runs.Settings.from_env")
+    @patch("backend.rbac.ro_cursor")
+    def test_live_mcp_triage_503_on_runtime_exception(
+        self,
+        mock_rbac_ro,
+        mock_settings,
+        mock_repo_cls,
+        mock_agent_cls,
+    ):
+        self._mock_rbac(mock_rbac_ro)
+        mock_settings.return_value = self._settings()
+        repo = MagicMock()
+        repo.get_alert_scope.return_value = {
+            "alert_id": 1,
+            "customer_id": 10,
+            "account_id": 20,
+            "transaction_id": 30,
+        }
+        mock_repo_cls.return_value = repo
+        agent = MagicMock()
+        agent.run_and_persist.side_effect = RuntimeError("planner failed")
+        mock_agent_cls.return_value = agent
+
+        client = make_client()
+        resp = client.post("/api/agent-runs/live-mcp-triage", json={"alert_id": 1}, headers=HEADERS)
+
+        self.assertEqual(resp.status_code, 503)
+        self.assertIn("Live MCP workflow failed", resp.json()["detail"])
+
+
 class TestGetAgentRun(unittest.TestCase):
     @patch("backend.routes.agent_runs.SidecarStore")
     @patch("backend.rbac.ro_cursor")
@@ -217,6 +359,34 @@ class TestGetAgentRun(unittest.TestCase):
         body = resp.json()
         self.assertIn("agent_steps", body)
         self.assertIn("tool_calls", body)
+
+    @patch("backend.routes.agent_runs.SidecarStore")
+    @patch("backend.rbac.ro_cursor")
+    def test_get_trace_includes_phase2_runtime_events(self, mock_rbac_ro, mock_store_cls):
+        rbac_cur = MagicMock()
+        rbac_cur.fetchone.return_value = OFFICER_FIXTURE
+        rbac_cur.__enter__ = MagicMock(return_value=rbac_cur)
+        rbac_cur.__exit__ = MagicMock(return_value=False)
+        mock_rbac_ro.return_value = rbac_cur
+
+        mock_store = MagicMock()
+        mock_store.get_trace.return_value = {
+            "run_id": "run-abc123",
+            "runtime_events": [{"sequence_number": 1, "state": "created"}],
+            "terminal_state": "proposed",
+            "stop_reason": "completed",
+            "agent_steps": [],
+            "tool_calls": [],
+            "observations": [],
+        }
+        mock_store_cls.return_value = mock_store
+
+        client = make_client()
+        resp = client.get("/api/agent-runs/run-abc123/trace", headers=HEADERS)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["runtime_events"][0]["state"], "created")
+        self.assertEqual(body["terminal_state"], "proposed")
 
 
 if __name__ == "__main__":

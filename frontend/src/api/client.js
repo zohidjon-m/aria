@@ -35,7 +35,17 @@ export const linkAlertToCase = (caseId, alertId) =>
 
 export const postTriageRun = (alertId) =>
   api.post('/agent-runs/triage', { alert_id: alertId }, { timeout: 60000 }).then(r => r.data);
+export const postLiveMcpTriageRun = (alertId, options = {}) =>
+  api.post('/agent-runs/live-mcp-triage', { alert_id: alertId, ...options }, { timeout: 120000 }).then(r => r.data);
+export const postLiveMcpWorkflow = (body) =>
+  api.post('/agent-runs/live-mcp', body, { timeout: 120000 }).then(r => r.data);
+export const getLiveMcpConfig = () => api.get('/agent-runs/live-mcp-config').then(r => r.data);
 export const getAgentRun = (runId) => api.get(`/agent-runs/${runId}`).then(r => r.data);
 export const getAgentTrace = (runId) => api.get(`/agent-runs/${runId}/trace`).then(r => r.data);
+export const getAgentReview = (runId) => api.get(`/agent-runs/${runId}/review`).then(r => r.data);
+export const postHumanDecision = (runId, body) =>
+  api.post(`/agent-runs/${runId}/human-decisions`, body).then(r => r.data);
+export const postBankExport = (runId, body = {}) =>
+  api.post(`/agent-runs/${runId}/exports`, body).then(r => r.data);
 
 export const getAuditLog = (params) => api.get('/audit-log', { params }).then(r => r.data);

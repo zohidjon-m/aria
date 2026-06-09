@@ -15,6 +15,12 @@ class ReferenceRepository(Protocol):
     def get_alert_scope(self, alert_id: int) -> dict[str, Any] | None:
         ...
 
+    def get_customer_scope(self, customer_id: int) -> dict[str, Any] | None:
+        ...
+
+    def get_case_scope(self, case_id: int) -> dict[str, Any] | None:
+        ...
+
     def get_customer_profile(self, customer_id: int) -> dict[str, Any]:
         ...
 
@@ -123,6 +129,113 @@ class PostgresReferenceRepository:
             (alert_id,),
         )
         return rows[0] if rows else None
+
+    def get_customer_scope(self, customer_id: int) -> dict[str, Any] | None:
+        customer = self._one(
+            "SELECT customer_id FROM customers WHERE customer_id = %s",
+            (customer_id,),
+        )
+        if not customer:
+            return None
+        accounts = self._query(
+            """
+            SELECT account_id FROM accounts
+            WHERE customer_id = %s
+            ORDER BY account_id
+            """,
+            (customer_id,),
+        )
+        transactions = self._query(
+            """
+            SELECT tx.transaction_id
+            FROM transactions tx
+            JOIN accounts acc ON acc.account_id = tx.account_id
+            WHERE acc.customer_id = %s
+            ORDER BY tx.created_at DESC, tx.transaction_id DESC
+            LIMIT 500
+            """,
+            (customer_id,),
+        )
+        cases = self._query(
+            """
+            SELECT case_id FROM cases
+            WHERE customer_id = %s
+            ORDER BY opened_at DESC, case_id DESC
+            LIMIT 100
+            """,
+            (customer_id,),
+        )
+        return {
+            "customer_id": int(customer_id),
+            "account_ids": [int(row["account_id"]) for row in accounts],
+            "transaction_ids": [int(row["transaction_id"]) for row in transactions],
+            "case_ids": [int(row["case_id"]) for row in cases],
+        }
+
+    def get_case_scope(self, case_id: int) -> dict[str, Any] | None:
+        case = self._one(
+            """
+            SELECT case_id, customer_id
+            FROM cases
+            WHERE case_id = %s
+            """,
+            (case_id,),
+        )
+        if not case:
+            return None
+        customer_id = int(case["customer_id"])
+        customer_scope = self.get_customer_scope(customer_id) or {
+            "account_ids": [],
+            "transaction_ids": [],
+            "case_ids": [],
+        }
+        linked_alerts = self._query(
+            """
+            SELECT
+                al.alert_id,
+                al.transaction_id,
+                acc.account_id
+            FROM case_alerts ca
+            JOIN alerts al ON al.alert_id = ca.alert_id
+            JOIN transactions tx ON tx.transaction_id = al.transaction_id
+            JOIN accounts acc ON acc.account_id = tx.account_id
+            WHERE ca.case_id = %s
+            ORDER BY ca.added_at DESC, al.alert_id DESC
+            """,
+            (case_id,),
+        )
+        account_ids = {
+            int(value)
+            for value in customer_scope.get("account_ids", [])
+            if value is not None
+        }
+        transaction_ids = {
+            int(value)
+            for value in customer_scope.get("transaction_ids", [])
+            if value is not None
+        }
+        alert_ids = []
+        for row in linked_alerts:
+            alert_ids.append(int(row["alert_id"]))
+            if row.get("account_id") is not None:
+                account_ids.add(int(row["account_id"]))
+            if row.get("transaction_id") is not None:
+                transaction_ids.add(int(row["transaction_id"]))
+        case_ids = {
+            int(value)
+            for value in customer_scope.get("case_ids", [])
+            if value is not None
+        }
+        case_ids.add(int(case_id))
+        return {
+            "case_id": int(case_id),
+            "customer_id": customer_id,
+            "primary_alert_id": alert_ids[0] if alert_ids else None,
+            "alert_ids": alert_ids,
+            "account_ids": sorted(account_ids),
+            "transaction_ids": sorted(transaction_ids),
+            "case_ids": sorted(case_ids),
+        }
 
     def get_customer_profile(self, customer_id: int) -> dict[str, Any]:
         customer = self._one(

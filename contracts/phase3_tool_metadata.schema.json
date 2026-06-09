@@ -1,0 +1,250 @@
+{
+  "$defs": {
+    "Phase3ScopeExpansionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "audit_required": {
+          "default": true,
+          "title": "Audit Required",
+          "type": "boolean"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "expandable_entity_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expandable Entity Types",
+          "type": "array"
+        },
+        "forbidden_tool_arg_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Tool Arg Fields",
+          "type": "array"
+        },
+        "max_hops": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Hops"
+        },
+        "max_rows": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Rows"
+        },
+        "mode": {
+          "enum": [
+            "none",
+            "bounded_graph_traversal",
+            "requires_policy_approval"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "requires_policy_decision": {
+          "default": true,
+          "title": "Requires Policy Decision",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "description"
+      ],
+      "title": "Phase3ScopeExpansionPolicy",
+      "type": "object"
+    },
+    "Phase3ToolExample": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "request": {
+          "additionalProperties": true,
+          "title": "Request",
+          "type": "object"
+        },
+        "response": {
+          "additionalProperties": true,
+          "title": "Response",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Phase3ToolExample",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "args_schema": {
+      "additionalProperties": true,
+      "title": "Args Schema",
+      "type": "object"
+    },
+    "audit_outcomes": {
+      "items": {
+        "enum": [
+          "success",
+          "denial",
+          "partial_response",
+          "error"
+        ],
+        "type": "string"
+      },
+      "title": "Audit Outcomes",
+      "type": "array"
+    },
+    "category": {
+      "enum": [
+        "read",
+        "bank_write",
+        "sidecar_write",
+        "sidecar_proposal"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "description": {
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "deterministic_policy_required": {
+      "default": true,
+      "title": "Deterministic Policy Required",
+      "type": "boolean"
+    },
+    "examples": {
+      "items": {
+        "$ref": "#/$defs/Phase3ToolExample"
+      },
+      "title": "Examples",
+      "type": "array"
+    },
+    "execution_owner": {
+      "enum": [
+        "bank_mcp",
+        "sidecar"
+      ],
+      "title": "Execution Owner",
+      "type": "string"
+    },
+    "human_review_required": {
+      "default": false,
+      "title": "Human Review Required",
+      "type": "boolean"
+    },
+    "idempotency_required": {
+      "default": true,
+      "title": "Idempotency Required",
+      "type": "boolean"
+    },
+    "llm_may_request": {
+      "default": true,
+      "title": "Llm May Request",
+      "type": "boolean"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "purpose": {
+      "enum": [
+        "triage",
+        "investigation",
+        "risk_scoring",
+        "sar_drafting",
+        "evaluation"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "required_permissions": {
+      "items": {
+        "enum": [
+          "can_view_alerts",
+          "can_manage_cases",
+          "can_file_sar",
+          "can_manage_rules",
+          "can_manage_users",
+          "service_identity"
+        ],
+        "type": "string"
+      },
+      "title": "Required Permissions",
+      "type": "array"
+    },
+    "response_schema": {
+      "additionalProperties": true,
+      "title": "Response Schema",
+      "type": "object"
+    },
+    "scope_expansion_policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Phase3ScopeExpansionPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "side_effect_type": {
+      "enum": [
+        "none",
+        "bank_system_write",
+        "sidecar_persistence",
+        "proposal_only",
+        "draft_only"
+      ],
+      "title": "Side Effect Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "description",
+    "category",
+    "purpose",
+    "side_effect_type",
+    "execution_owner"
+  ],
+  "title": "Phase3ToolMetadata",
+  "type": "object"
+}

@@ -1,0 +1,95 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "enum": [
+        "allow",
+        "deny",
+        "limit",
+        "audit",
+        "requires_human_review"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "decision_source": {
+      "enum": [
+        "scope_policy",
+        "rbac",
+        "runtime_policy",
+        "bank_mcp",
+        "sidecar_policy"
+      ],
+      "title": "Decision Source",
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+    },
+    "granted_permissions": {
+      "items": {
+        "enum": [
+          "can_view_alerts",
+          "can_manage_cases",
+          "can_file_sar",
+          "can_manage_rules",
+          "can_manage_users",
+          "service_identity"
+        ],
+        "type": "string"
+      },
+      "title": "Granted Permissions",
+      "type": "array"
+    },
+    "missing_permissions": {
+      "items": {
+        "enum": [
+          "can_view_alerts",
+          "can_manage_cases",
+          "can_file_sar",
+          "can_manage_rules",
+          "can_manage_users",
+          "service_identity"
+        ],
+        "type": "string"
+      },
+      "title": "Missing Permissions",
+      "type": "array"
+    },
+    "policy": {
+      "minLength": 1,
+      "title": "Policy",
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "required_permissions": {
+      "items": {
+        "enum": [
+          "can_view_alerts",
+          "can_manage_cases",
+          "can_file_sar",
+          "can_manage_rules",
+          "can_manage_users",
+          "service_identity"
+        ],
+        "type": "string"
+      },
+      "title": "Required Permissions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "decision",
+    "decision_source",
+    "policy",
+    "reason"
+  ],
+  "title": "Phase3PolicyDecision",
+  "type": "object"
+}

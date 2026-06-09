@@ -16,6 +16,18 @@ Purpose = Literal[
 MCPStatus = Literal["ok", "partial", "denied", "error"]
 Recommendation = Literal["likely_false_positive", "needs_investigation", "escalate"]
 ValidationStatusValue = Literal["passed", "failed", "not_run"]
+RuntimeState = Literal[
+    "created",
+    "context_loaded",
+    "planning",
+    "tool_requested",
+    "tool_executed",
+    "observing",
+    "revising",
+    "validating",
+    "proposed",
+    "failed_safe",
+]
 
 
 class StrictContractModel(BaseModel):
@@ -96,6 +108,7 @@ class RuntimeBounds(StrictContractModel):
     max_rows: int = Field(default=100, ge=1, le=500)
     max_graph_hops: int = Field(default=4, ge=1, le=8)
     timeout_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
+    max_cost_usd: float = Field(default=1.0, ge=0.0, le=100.0)
 
 
 class AgentRunRequest(StrictContractModel):
@@ -138,6 +151,25 @@ class AgentTraceStep(StrictContractModel):
     error: str | None = None
 
 
+class RuntimeEvent(StrictContractModel):
+    event_id: str = Field(min_length=1)
+    sequence_number: int = Field(ge=1)
+    state: RuntimeState
+    event_type: str = Field(min_length=1)
+    step_number: int | None = Field(default=None, ge=1)
+    tool_name: str | None = None
+    tool_args: dict[str, Any] = Field(default_factory=dict)
+    status: str | None = None
+    stop_reason: str | None = None
+    hypothesis_before: str | None = None
+    hypothesis_after: str | None = None
+    audit_id: str | None = None
+    policy_decisions: list[PolicyDecision] = Field(default_factory=list)
+    data_completeness: DataCompleteness | None = None
+    error: str | None = None
+    created_at: str = Field(min_length=1)
+
+
 class FactualClaim(StrictContractModel):
     statement: str = Field(min_length=1)
     evidence_refs: list[MCPSourceRef] = Field(default_factory=list)
@@ -168,6 +200,9 @@ class AgentProposal(StrictContractModel):
     policy_version: str = Field(min_length=1)
     runtime_bounds: RuntimeBounds
     validation_status: ValidationStatus
+    terminal_state: RuntimeState
+    stop_reason: str = Field(min_length=1)
+    runtime_events: list[RuntimeEvent] = Field(default_factory=list)
     trace: list[AgentTraceStep] = Field(default_factory=list)
     tool_calls: list[AgentToolCall] = Field(default_factory=list)
     observations: list[AgentObservation] = Field(default_factory=list)

@@ -1,40 +1,37 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import {
-  getAlert, postAlertComment, postTriageRun, getAgentRun,
-} from '../api/client';
+import { Sparkles, MessageSquare, FileText, Receipt, History, FolderKanban, ChevronRight } from 'lucide-react';
+import { getAlert, postAlertComment, postTriageRun, getAgentRun, postLiveMcpWorkflow } from '../api/client';
+import PageHeader from '../components/ui/PageHeader';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import Badge from '../components/ui/Badge';
+import { LoadingBlock } from '../components/ui/Spinner';
+import ErrorMessage from '../components/shared/ErrorMessage';
 import SeverityBadge from '../components/shared/SeverityBadge';
 import StatusBadge from '../components/shared/StatusBadge';
 import OfficerAvatar from '../components/shared/OfficerAvatar';
 import SanctionsPepFlag from '../components/shared/SanctionsPepFlag';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
-import ErrorMessage from '../components/shared/ErrorMessage';
-import AgentProposalPanel from '../components/AgentProposalPanel';
+import AgentReviewPanel from '../components/AgentReviewPanel';
 import AgentTraceDrawer from '../components/AgentTraceDrawer';
 import DispositionControls from '../components/DispositionControls';
 
-function FatfBadge({ status }) {
-  if (!status || status === 'none') return null;
-  const cls = status === 'blacklist' ? 'bg-red-900 text-red-300' : 'bg-amber-900 text-amber-300';
-  return <span className={`text-xs px-1 py-0.5 rounded font-mono uppercase ${cls}`}>{status}</span>;
-}
-
-function Card({ title, children }) {
-  return (
-    <div className="bg-dark-panel border border-dark-border rounded p-3 mb-3">
-      {title && <div className="text-xs uppercase tracking-wide text-gray-500 mb-2 font-semibold">{title}</div>}
-      {children}
-    </div>
-  );
-}
-
 function Field({ label, value }) {
   return (
-    <div className="flex gap-2 text-xs mb-1">
-      <span className="text-gray-500 w-32 shrink-0">{label}</span>
-      <span className="text-gray-200 break-all">{value ?? '—'}</span>
+    <div className="flex gap-3 text-sm py-1">
+      <span className="text-ink-subtle w-32 shrink-0">{label}</span>
+      <span className="text-ink break-words">{value ?? '—'}</span>
     </div>
   );
+}
+
+function FatfBadge({ status }) {
+  if (!status || status === 'none') return null;
+  return <Badge tone={status === 'blacklist' ? 'red' : 'amber'}>{status}</Badge>;
+}
+
+function money(v) {
+  return v != null ? `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
 }
 
 export default function AlertDetailPage() {
@@ -46,6 +43,7 @@ export default function AlertDetailPage() {
   const [commenting, setCommenting] = useState(false);
   const [agentRun, setAgentRun] = useState(null);
   const [triaging, setTriaging] = useState(false);
+  const [liveWorkflow, setLiveWorkflow] = useState(null);
   const [triageError, setTriageError] = useState(null);
   const [traceOpen, setTraceOpen] = useState(false);
 
@@ -54,9 +52,7 @@ export default function AlertDetailPage() {
     getAlert(id)
       .then(d => {
         setAlert(d);
-        if (d.latest_run_id && !agentRun) {
-          getAgentRun(d.latest_run_id).then(setAgentRun).catch(() => {});
-        }
+        if (d.latest_run_id && !agentRun) getAgentRun(d.latest_run_id).then(setAgentRun).catch(() => {});
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -89,82 +85,108 @@ export default function AlertDetailPage() {
     }
   }
 
-  if (loading) return <div className="p-4"><LoadingSpinner /></div>;
-  if (error) return <div className="p-4"><ErrorMessage message={error} /></div>;
+  async function handleLiveWorkflow(workflow) {
+    setLiveWorkflow(workflow);
+    setTriageError(null);
+    try {
+      const result = await postLiveMcpWorkflow({ workflow, alert_id: Number(id) });
+      const run = await getAgentRun(result.run_id);
+      setAgentRun(run);
+    } catch (e) {
+      setTriageError(e.response?.data?.detail || e.message);
+    } finally {
+      setLiveWorkflow(null);
+    }
+  }
+
+  if (loading) return <LoadingBlock label="Loading alert…" />;
+  if (error) return <ErrorMessage message={error} />;
   if (!alert) return null;
 
+  const workflowLaunchers = [
+    {
+      key: 'deterministic',
+      label: 'Deterministic',
+      detail: 'Policy triage',
+      loading: triaging,
+      onClick: handleTriage,
+    },
+    {
+      key: 'triage',
+      label: 'Live Triage',
+      detail: 'MCP triage',
+      loading: liveWorkflow === 'triage',
+      onClick: () => handleLiveWorkflow('triage'),
+    },
+    {
+      key: 'investigation',
+      label: 'Investigate',
+      detail: 'Evidence review',
+      loading: liveWorkflow === 'investigation',
+      onClick: () => handleLiveWorkflow('investigation'),
+    },
+  ];
+
   return (
-    <div className="p-4">
-      <div className="text-xs text-gray-500 mb-3">
-        <Link to="/alerts" className="hover:text-brand-primary">Alerts</Link>
-        <span className="mx-1">/</span>
-        <span className="text-gray-300">#{alert.alert_id}</span>
-      </div>
+    <div>
+      <PageHeader
+        title={`Alert #${alert.alert_id}`}
+        breadcrumb={<Link to="/alerts" className="hover:text-brand">Alerts</Link>}
+        subtitle={alert.rule_name}
+        actions={<div className="flex items-center gap-2"><SeverityBadge severity={alert.severity} /><StatusBadge status={alert.status} /></div>}
+      />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Left column */}
-        <div>
-          <Card title="Alert">
-            <div className="flex gap-2 items-center mb-2">
-              <SeverityBadge severity={alert.severity} />
-              <StatusBadge status={alert.status} />
-            </div>
-            <Field label="Alert ID" value={`#${alert.alert_id}`} />
-            <Field label="Rule" value={alert.rule_name} />
-            <Field label="Created" value={new Date(alert.created_at).toLocaleString()} />
-            <Field label="Assigned To" value={alert.officer_name} />
-          </Card>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Left: case file */}
+        <div className="xl:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card title="Triggering Transaction" icon={Receipt}>
+              <Field label="Amount" value={alert.amount != null ? `${alert.amount} ${alert.currency_code}` : '—'} />
+              <Field label="Amount (USD)" value={money(alert.amount_usd)} />
+              <Field label="Type" value={alert.transaction_type} />
+              <div className="flex gap-3 text-sm py-1">
+                <span className="text-ink-subtle w-32 shrink-0">Destination</span>
+                <span className="text-ink flex items-center gap-2">
+                  {alert.destination_country_name || alert.destination_country || '—'}
+                  <FatfBadge status={alert.destination_fatf_status} />
+                </span>
+              </div>
+              <Field label="Date" value={alert.transaction_date ? new Date(alert.transaction_date).toLocaleString() : '—'} />
+              <Field label="Reference" value={alert.reference_number} />
+            </Card>
 
-          <Card title="Triggering Transaction">
-            <Field label="Amount" value={alert.amount != null ? `${alert.amount} ${alert.currency_code}` : '—'} />
-            <Field label="Amount USD" value={alert.amount_usd != null ? `$${Number(alert.amount_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'} />
-            <Field label="Type" value={alert.transaction_type} />
-            <div className="flex gap-2 text-xs mb-1">
-              <span className="text-gray-500 w-32 shrink-0">Destination</span>
-              <span className="text-gray-200 flex items-center gap-1">
-                {alert.destination_country_name || alert.destination_country || '—'}
-                <FatfBadge status={alert.destination_fatf_status} />
-              </span>
-            </div>
-            <Field label="Date" value={alert.transaction_date ? new Date(alert.transaction_date).toLocaleDateString() : '—'} />
-            <Field label="Reference" value={alert.reference_number} />
-          </Card>
-
-          <Card title="Customer">
-            <div className="flex items-center gap-2 mb-2">
-              <Link to={`/customers/${alert.customer_id}`} className="text-brand-accent hover:underline font-semibold text-sm">
-                {alert.customer_name}
-              </Link>
-              {alert.has_sanctions_hit && <SanctionsPepFlag type="sanctions" />}
-              {alert.has_pep_hit && <SanctionsPepFlag type="pep" />}
-            </div>
-            <Field label="Risk Level" value={alert.risk_level} />
-            <Field label="KYC Status" value={alert.kyc_status} />
-            <Field label="Nationality" value={alert.nationality_name || alert.nationality} />
-          </Card>
+            <Card title="Customer" icon={FileText} actions={<Link to={`/customers/${alert.customer_id}`} className="text-xs font-medium text-brand hover:underline inline-flex items-center">Profile <ChevronRight className="w-3.5 h-3.5" /></Link>}>
+              <div className="flex items-center gap-2 mb-2">
+                <Link to={`/customers/${alert.customer_id}`} className="text-base font-semibold text-ink hover:text-brand">{alert.customer_name}</Link>
+                <SanctionsPepFlag hasSanctions={alert.has_sanctions_hit} hasPep={alert.has_pep_hit} />
+              </div>
+              <Field label="Risk Level" value={alert.risk_level} />
+              <Field label="KYC Status" value={alert.kyc_status} />
+              <Field label="Nationality" value={alert.nationality_name || alert.nationality} />
+              <Field label="Assigned To" value={alert.officer_name} />
+            </Card>
+          </div>
 
           {alert.recent_transactions?.length > 0 && (
-            <Card title="Recent Transactions">
-              <table className="w-full text-xs">
+            <Card title="Recent Transactions" icon={Receipt} bodyClassName="p-0">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-gray-500 border-b border-dark-border">
-                    <th className="pb-1 text-left">Date</th>
-                    <th className="pb-1 text-left">Type</th>
-                    <th className="pb-1 text-right">Amount USD</th>
-                    <th className="pb-1 text-left">Country</th>
-                    <th className="pb-1 text-center">Flag</th>
+                  <tr className="text-left text-xs text-ink-subtle uppercase tracking-wide bg-surface-2/60">
+                    <th className="font-medium px-4 py-2">Date</th>
+                    <th className="font-medium px-4 py-2">Type</th>
+                    <th className="font-medium px-4 py-2 text-right">Amount</th>
+                    <th className="font-medium px-4 py-2">Country</th>
+                    <th className="font-medium px-4 py-2 text-center">Flag</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border">
                   {alert.recent_transactions.slice(0, 10).map(t => (
-                    <tr key={t.transaction_id} className="border-b border-dark-border">
-                      <td className="py-1 text-gray-500">{new Date(t.created_at).toLocaleDateString()}</td>
-                      <td className="py-1 text-gray-300">{t.transaction_type}</td>
-                      <td className="py-1 text-right font-mono text-gray-200">
-                        {t.amount_usd != null ? `$${Number(t.amount_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}
-                      </td>
-                      <td className="py-1 text-gray-400">{t.destination_country || '—'}</td>
-                      <td className="py-1 text-center">{t.is_flagged ? <span className="text-red-400">!</span> : ''}</td>
+                    <tr key={t.transaction_id} className="hover:bg-surface-2">
+                      <td className="px-4 py-2 text-ink-subtle text-xs">{new Date(t.created_at).toLocaleDateString()}</td>
+                      <td className="px-4 py-2 text-ink-muted">{t.transaction_type}</td>
+                      <td className="px-4 py-2 text-right tnum text-ink">{money(t.amount_usd)}</td>
+                      <td className="px-4 py-2 text-ink-muted">{t.destination_country || '—'}</td>
+                      <td className="px-4 py-2 text-center">{t.is_flagged ? <span className="text-red-500 font-bold">!</span> : ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -172,83 +194,101 @@ export default function AlertDetailPage() {
             </Card>
           )}
 
-          {alert.prior_alerts?.length > 0 && (
-            <Card title="Prior Alerts (top 5)">
-              {alert.prior_alerts.slice(0, 5).map(a => (
-                <div key={a.alert_id} className="flex items-center gap-2 text-xs py-1 border-b border-dark-border last:border-0">
-                  <SeverityBadge severity={a.severity} />
-                  <Link to={`/alerts/${a.alert_id}`} className="text-brand-primary hover:underline">#{a.alert_id}</Link>
-                  <span className="text-gray-400 truncate">{a.rule_name}</span>
-                  <span className="ml-auto text-gray-500">{new Date(a.created_at).toLocaleDateString()}</span>
-                  <StatusBadge status={a.status} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {alert.prior_alerts?.length > 0 && (
+              <Card title="Prior Alerts" icon={History}>
+                <div className="space-y-2">
+                  {alert.prior_alerts.slice(0, 5).map(a => (
+                    <div key={a.alert_id} className="flex items-center gap-2 text-sm">
+                      <SeverityBadge severity={a.severity} />
+                      <Link to={`/alerts/${a.alert_id}`} className="text-brand hover:underline font-mono text-xs">#{a.alert_id}</Link>
+                      <span className="text-ink-muted truncate flex-1">{a.rule_name}</span>
+                      <StatusBadge status={a.status} />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </Card>
-          )}
-
-          {alert.prior_cases?.length > 0 && (
-            <Card title="Prior Cases (top 5)">
-              {alert.prior_cases.slice(0, 5).map(c => (
-                <div key={c.case_id} className="flex items-center gap-2 text-xs py-1 border-b border-dark-border last:border-0">
-                  <Link to={`/cases/${c.case_id}`} className="text-brand-primary hover:underline">#{c.case_id}</Link>
-                  <span className="text-gray-400">{c.case_type}</span>
-                  <StatusBadge status={c.status} />
-                  <span className="ml-auto text-gray-500">{new Date(c.opened_at).toLocaleDateString()}</span>
+              </Card>
+            )}
+            {alert.prior_cases?.length > 0 && (
+              <Card title="Prior Cases" icon={FolderKanban}>
+                <div className="space-y-2">
+                  {alert.prior_cases.slice(0, 5).map(c => (
+                    <div key={c.case_id} className="flex items-center gap-2 text-sm">
+                      <Link to={`/cases/${c.case_id}`} className="text-brand hover:underline font-mono text-xs">#{c.case_id}</Link>
+                      <span className="text-ink-muted flex-1">{c.case_type}</span>
+                      <StatusBadge status={c.status} />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </Card>
-          )}
+              </Card>
+            )}
+          </div>
 
-          <Card title="Comments">
-            {alert.comments?.length === 0 && <p className="text-xs text-gray-500">No comments yet.</p>}
-            {alert.comments?.map(c => (
-              <div key={c.comment_id} className="flex gap-2 mb-3">
-                <OfficerAvatar name={c.officer_name} />
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xs font-semibold text-gray-300">{c.officer_name}</span>
-                    <span className="text-xs text-gray-600">{new Date(c.created_at).toLocaleString()}</span>
+          <Card title="Comments" icon={MessageSquare}>
+            {alert.comments?.length === 0 && <p className="text-sm text-ink-subtle mb-3">No comments yet.</p>}
+            <div className="space-y-4 mb-4">
+              {alert.comments?.map(c => (
+                <div key={c.comment_id} className="flex gap-2.5">
+                  <OfficerAvatar name={c.officer_name} officerId={c.officer_id} />
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-medium text-ink">{c.officer_name}</span>
+                      <span className="text-xs text-ink-subtle">{new Date(c.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="text-sm text-ink-muted mt-0.5">{c.comment}</p>
                   </div>
-                  <p className="text-xs text-gray-300 mt-0.5">{c.comment}</p>
                 </div>
-              </div>
-            ))}
-            <form onSubmit={handleComment} className="mt-2 flex gap-2">
+              ))}
+            </div>
+            <form onSubmit={handleComment} className="flex gap-2">
               <input
                 value={comment}
                 onChange={e => setComment(e.target.value)}
-                placeholder="Add a comment..."
-                className="flex-1 bg-dark-bg border border-dark-border rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-brand-primary"
+                placeholder="Add a comment…"
+                className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand/30"
               />
-              <button
-                type="submit"
-                disabled={!comment.trim() || commenting}
-                className="px-3 py-1 text-xs bg-brand-primary rounded disabled:opacity-40 hover:opacity-90"
-              >
-                Post
-              </button>
+              <Button type="submit" disabled={!comment.trim()} loading={commenting}>Post</Button>
             </form>
           </Card>
         </div>
 
-        {/* Right column */}
-        <div>
-          <Card>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Agent Triage</span>
-              <button
-                onClick={handleTriage}
-                disabled={triaging}
-                className="px-3 py-1 text-xs bg-brand-primary rounded hover:opacity-90 disabled:opacity-40 flex items-center gap-1"
-              >
-                {triaging ? <><LoadingSpinner size="sm" /> Running...</> : 'Run Agent Triage'}
-              </button>
+        {/* Right: agent + disposition */}
+        <div className="space-y-6">
+          <Card title="Agent Review" icon={Sparkles}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold text-ink-subtle uppercase tracking-wide mb-2">Workflow launcher</div>
+              <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border bg-surface">
+                {workflowLaunchers.map(item => {
+                  const running = Boolean(item.loading);
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={item.onClick}
+                      disabled={triaging || Boolean(liveWorkflow)}
+                      className={`min-w-0 border-r border-border px-2.5 py-2 text-left last:border-r-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                        running ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface-2 disabled:text-ink-subtle'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        {running ? (
+                          <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="text-xs font-semibold truncate">{item.label}</span>
+                      </div>
+                      <div className="text-[11px] text-ink-subtle truncate mt-0.5">{item.detail}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            {triageError && <ErrorMessage message={triageError} />}
+            {triageError && <div className="mb-3"><ErrorMessage message={triageError} /></div>}
             {agentRun ? (
-              <AgentProposalPanel run={agentRun} onViewTrace={() => setTraceOpen(true)} />
+              <AgentReviewPanel runId={agentRun?.run?.run_id} onViewTrace={() => setTraceOpen(true)} />
             ) : (
-              <p className="text-xs text-gray-500">No agent run yet. Click "Run Agent Triage" to analyze this alert.</p>
+              <p className="text-sm text-ink-subtle">No agent run yet. Run deterministic triage, live triage, or live investigation. The agent produces an advisory proposal only.</p>
             )}
           </Card>
 
@@ -258,11 +298,7 @@ export default function AlertDetailPage() {
         </div>
       </div>
 
-      <AgentTraceDrawer
-        runId={agentRun?.run?.run_id}
-        isOpen={traceOpen}
-        onClose={() => setTraceOpen(false)}
-      />
+      <AgentTraceDrawer runId={agentRun?.run?.run_id} isOpen={traceOpen} onClose={() => setTraceOpen(false)} />
     </div>
   );
 }

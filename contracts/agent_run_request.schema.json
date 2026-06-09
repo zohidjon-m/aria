@@ -3,6 +3,13 @@
     "RuntimeBounds": {
       "additionalProperties": false,
       "properties": {
+        "max_cost_usd": {
+          "default": 1.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Max Cost Usd",
+          "type": "number"
+        },
         "max_graph_hops": {
           "default": 4,
           "maximum": 8,
@@ -175,4 +182,4 @@
   ],
   "title": "AgentRunRequest",
   "type": "object"
-}
+}

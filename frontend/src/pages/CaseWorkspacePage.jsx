@@ -1,24 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getCase, linkAlertToCase } from '../api/client';
+import { FolderKanban, Link2, FileText, Sparkles } from 'lucide-react';
+import { getCase, getAgentRun, linkAlertToCase, postLiveMcpWorkflow } from '../api/client';
+import PageHeader from '../components/ui/PageHeader';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import Badge from '../components/ui/Badge';
+import { LoadingBlock } from '../components/ui/Spinner';
+import EmptyState from '../components/ui/EmptyState';
+import ErrorMessage from '../components/shared/ErrorMessage';
 import StatusBadge from '../components/shared/StatusBadge';
 import SeverityBadge from '../components/shared/SeverityBadge';
 import OfficerAvatar from '../components/shared/OfficerAvatar';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
-import ErrorMessage from '../components/shared/ErrorMessage';
+import AgentReviewPanel from '../components/AgentReviewPanel';
+import AgentTraceDrawer from '../components/AgentTraceDrawer';
+
+const PRIORITY_TONE = { critical: 'red', high: 'amber', medium: 'violet', low: 'emerald' };
 
 function Field({ label, value }) {
   return (
-    <div className="flex gap-2 text-xs mb-1">
-      <span className="text-gray-500 w-32 shrink-0">{label}</span>
-      <span className="text-gray-200">{value ?? '—'}</span>
+    <div className="flex gap-3 text-sm py-1">
+      <span className="text-ink-subtle w-32 shrink-0">{label}</span>
+      <span className="text-ink break-words">{value ?? '—'}</span>
     </div>
   );
 }
-
-function PriorityBadge({ priority }) {
-  const map = { critical: 'text-red-400', high: 'text-orange-400', medium: 'text-yellow-400', low: 'text-green-400' };
-  return <span className={`text-xs font-mono uppercase font-bold ${map[priority] || 'text-gray-400'}`}>{priority || '—'}</span>;
+function money(v) {
+  return v != null ? `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
 }
 
 export default function CaseWorkspacePage() {
@@ -29,15 +37,16 @@ export default function CaseWorkspacePage() {
   const [linkAlertId, setLinkAlertId] = useState('');
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState(null);
+  const [officerContext, setOfficerContext] = useState('');
+  const [sarRun, setSarRun] = useState(null);
+  const [sarRunning, setSarRunning] = useState(false);
+  const [sarError, setSarError] = useState(null);
+  const [traceOpen, setTraceOpen] = useState(false);
 
   function loadCase() {
     setLoading(true);
-    getCase(id)
-      .then(setCaseData)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+    getCase(id).then(setCaseData).catch(e => setError(e.message)).finally(() => setLoading(false));
   }
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadCase(); }, [id]);
 
@@ -52,111 +61,143 @@ export default function CaseWorkspacePage() {
       .finally(() => setLinking(false));
   }
 
-  if (loading) return <div className="p-4"><LoadingSpinner /></div>;
-  if (error) return <div className="p-4"><ErrorMessage message={error} /></div>;
+  async function handleSarDraft() {
+    setSarRunning(true);
+    setSarError(null);
+    try {
+      const result = await postLiveMcpWorkflow({
+        workflow: 'sar_drafting',
+        case_id: Number(id),
+        officer_context: officerContext,
+      });
+      const run = await getAgentRun(result.run_id);
+      setSarRun(run);
+    } catch (e) {
+      setSarError(e.response?.data?.detail || e.message);
+    } finally {
+      setSarRunning(false);
+    }
+  }
+
+  if (loading) return <LoadingBlock label="Loading case…" />;
+  if (error) return <ErrorMessage message={error} />;
   if (!caseData) return null;
 
   return (
-    <div className="p-4 max-w-5xl mx-auto">
-      <div className="text-xs text-gray-500 mb-3">
-        <Link to="/alerts" className="hover:text-brand-primary">Alerts</Link>
-        <span className="mx-1">/</span>
-        <span className="text-gray-300">Case #{caseData.case_id}</span>
-      </div>
+    <div>
+      <PageHeader
+        title={`Case #${caseData.case_id}`}
+        breadcrumb={<><Link to="/alerts" className="hover:text-brand">Alerts</Link> <span className="mx-1">/</span> Case</>}
+        subtitle={caseData.case_type}
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge tone={PRIORITY_TONE[caseData.priority] || 'slate'} dot>{caseData.priority}</Badge>
+            <StatusBadge status={caseData.status} />
+          </div>
+        }
+      />
 
-      <div className="flex items-center gap-3 mb-4">
-        <h1 className="text-lg font-semibold text-gray-100">Case #{caseData.case_id}</h1>
-        <PriorityBadge priority={caseData.priority} />
-        <StatusBadge status={caseData.status} />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <div className="bg-dark-panel border border-dark-border rounded p-3">
-          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2 font-semibold">Case Details</div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <Card title="Case Details" icon={FolderKanban}>
           <Field label="Case Type" value={caseData.case_type} />
-          <Field label="Customer" value={
-            caseData.customer_id ? (
-              <Link to={`/customers/${caseData.customer_id}`} className="text-brand-accent hover:underline">
-                {caseData.customer_name || `#${caseData.customer_id}`}
-              </Link>
-            ) : null
-          } />
+          <Field label="Customer" value={caseData.customer_id ? <Link to={`/customers/${caseData.customer_id}`} className="text-brand hover:underline">{caseData.customer_name || `#${caseData.customer_id}`}</Link> : null} />
           <Field label="Opened" value={caseData.opened_at ? new Date(caseData.opened_at).toLocaleString() : null} />
           <Field label="Closed" value={caseData.closed_at ? new Date(caseData.closed_at).toLocaleString() : null} />
-          <div className="flex gap-2 text-xs mb-1">
-            <span className="text-gray-500 w-32 shrink-0">Assigned Officer</span>
-            <span className="flex items-center gap-1">
-              {caseData.officer_name && <OfficerAvatar name={caseData.officer_name} />}
-              <span className="text-gray-200">{caseData.officer_name || '—'}</span>
+          <div className="flex gap-3 text-sm py-1">
+            <span className="text-ink-subtle w-32 shrink-0">Officer</span>
+            <span className="flex items-center gap-2 text-ink">
+              {caseData.officer_name && <OfficerAvatar name={caseData.officer_name} officerId={caseData.officer_id} />}
+              {caseData.officer_name || '—'}
             </span>
           </div>
-        </div>
+        </Card>
 
-        <div className="bg-dark-panel border border-dark-border rounded p-3">
-          <div className="text-xs uppercase tracking-wide text-gray-500 mb-2 font-semibold">Summary</div>
-          <p className="text-xs text-gray-300 leading-relaxed">
-            {caseData.summary || <span className="text-gray-600 italic">No summary provided.</span>}
-          </p>
+        <Card title="Summary" icon={FileText}>
+          <p className="text-sm text-ink-muted leading-relaxed">{caseData.summary || <span className="text-ink-subtle italic">No summary provided.</span>}</p>
           {caseData.resolution && (
-            <div className="mt-3">
-              <div className="text-xs uppercase tracking-wide text-gray-500 mb-1 font-semibold">Resolution</div>
-              <p className="text-xs text-gray-300 leading-relaxed">{caseData.resolution}</p>
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-ink-subtle uppercase tracking-wide mb-1">Resolution</p>
+              <p className="text-sm text-ink-muted leading-relaxed">{caseData.resolution}</p>
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
-      <div className="bg-dark-panel border border-dark-border rounded p-3 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Linked Alerts</div>
+      <Card
+        title="SAR Draft Review"
+        subtitle="Officer context and draft review"
+        icon={Sparkles}
+        className="mb-6"
+      >
+        {sarError && <div className="mb-3"><ErrorMessage message={sarError} /></div>}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(16rem,22rem)_1fr] gap-4">
+          <div className="border border-border rounded-lg p-3">
+            <div className="text-xs font-semibold text-ink-subtle uppercase tracking-wide mb-2">Officer context</div>
+            <textarea
+              value={officerContext}
+              onChange={e => setOfficerContext(e.target.value)}
+              placeholder="Add case-specific context"
+              rows={5}
+              className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <Button className="mt-3 w-full" icon={Sparkles} onClick={handleSarDraft} loading={sarRunning}>Draft SAR</Button>
+          </div>
+          <div className="min-w-0">
+            {sarRun ? (
+              <AgentReviewPanel runId={sarRun?.run?.run_id} onViewTrace={() => setTraceOpen(true)} />
+            ) : (
+              <p className="text-sm text-ink-subtle">No SAR draft run yet. Drafts are evidence-grounded and require authorized human review.</p>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        title="Linked Alerts"
+        icon={Link2}
+        bodyClassName="p-0"
+        actions={
           <form onSubmit={handleLinkAlert} className="flex gap-2">
             <input
               value={linkAlertId}
               onChange={e => setLinkAlertId(e.target.value)}
               placeholder="Alert ID"
               type="number"
-              className="w-24 bg-dark-bg border border-dark-border rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-brand-primary"
+              className="w-24 bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
-            <button
-              type="submit"
-              disabled={!linkAlertId.trim() || linking}
-              className="px-3 py-1 text-xs bg-brand-primary rounded disabled:opacity-40 hover:opacity-90"
-            >
-              Link Alert
-            </button>
+            <Button type="submit" size="sm" disabled={!linkAlertId.trim()} loading={linking}>Link</Button>
           </form>
-        </div>
-        {linkError && <ErrorMessage message={linkError} />}
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="border-b border-dark-border text-gray-500 uppercase tracking-wide">
-              <th className="pb-2 text-left">Severity</th>
-              <th className="pb-2 text-left">Alert</th>
-              <th className="pb-2 text-left">Rule</th>
-              <th className="pb-2 text-right">Amount USD</th>
-              <th className="pb-2 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {caseData.alerts?.map(a => (
-              <tr key={a.alert_id} className="border-b border-dark-border hover:bg-dark-bg">
-                <td className="py-1.5"><SeverityBadge severity={a.severity} /></td>
-                <td className="py-1.5">
-                  <Link to={`/alerts/${a.alert_id}`} className="text-brand-primary hover:underline">#{a.alert_id}</Link>
-                </td>
-                <td className="py-1.5 text-gray-400 truncate max-w-xs">{a.rule_name}</td>
-                <td className="py-1.5 text-right font-mono text-gray-200">
-                  {a.amount_usd != null ? `$${Number(a.amount_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}
-                </td>
-                <td className="py-1.5"><StatusBadge status={a.status} /></td>
+        }
+      >
+        {linkError && <div className="p-4"><ErrorMessage message={linkError} /></div>}
+        {caseData.alerts?.length ? (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-ink-subtle uppercase tracking-wide bg-surface-2/60">
+                <th className="font-medium px-4 py-2">Severity</th>
+                <th className="font-medium px-4 py-2">Alert</th>
+                <th className="font-medium px-4 py-2">Rule</th>
+                <th className="font-medium px-4 py-2 text-right">Amount</th>
+                <th className="font-medium px-4 py-2">Status</th>
               </tr>
-            ))}
-            {!caseData.alerts?.length && (
-              <tr><td colSpan={5} className="py-4 text-center text-gray-500">No alerts linked to this case.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {caseData.alerts.map(a => (
+                <tr key={a.alert_id} className="hover:bg-surface-2">
+                  <td className="px-4 py-2.5"><SeverityBadge severity={a.severity} /></td>
+                  <td className="px-4 py-2.5"><Link to={`/alerts/${a.alert_id}`} className="text-brand hover:underline font-mono text-xs">#{a.alert_id}</Link></td>
+                  <td className="px-4 py-2.5 text-ink-muted max-w-xs truncate">{a.rule_name}</td>
+                  <td className="px-4 py-2.5 text-right tnum text-ink">{money(a.amount_usd)}</td>
+                  <td className="px-4 py-2.5"><StatusBadge status={a.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="p-4"><EmptyState icon={Link2} title="No linked alerts" message="Link an alert to this case using the field above." /></div>
+        )}
+      </Card>
+      <AgentTraceDrawer runId={sarRun?.run?.run_id} isOpen={traceOpen} onClose={() => setTraceOpen(false)} />
     </div>
   );
 }

@@ -1,16 +1,17 @@
-
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom';
+import { Briefcase } from 'lucide-react';
 
 export default function CaseIndicator({ hasCase, caseId }) {
-  const navigate = useNavigate()
-  if (!hasCase) return null
+  const navigate = useNavigate();
+  if (!hasCase) return null;
   return (
     <button
-      onClick={e => { e.stopPropagation(); if (caseId) navigate(`/cases/${caseId}`) }}
-      className="px-1.5 py-0.5 bg-slate-700 border border-slate-500 text-slate-300 text-xs rounded flex items-center gap-0.5 hover:bg-slate-600"
-      title="Has linked case"
+      onClick={e => { e.stopPropagation(); if (caseId) navigate(`/cases/${caseId}`); }}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 bg-slate-100
+        text-slate-600 text-xs font-medium hover:bg-slate-200 transition-colors"
+      title="Linked case"
     >
-      🗂 Case
+      <Briefcase className="w-3 h-3" /> Case
     </button>
-  )
+  );
 }
