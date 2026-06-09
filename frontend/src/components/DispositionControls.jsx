@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { Check, XCircle, ArrowUpRight } from 'lucide-react';
 import { postAlertDisposition } from '../api/client';
+import Button from './ui/Button';
 
 const STATUSES = [
-  { value: 'dismissed', label: 'Dismiss', cls: 'bg-gray-700 hover:bg-gray-600 text-gray-200' },
-  { value: 'escalated', label: 'Escalate', cls: 'bg-red-900 hover:bg-red-800 text-red-200 border border-red-700' },
-  { value: 'resolved', label: 'Mark Reviewed', cls: 'bg-blue-900 hover:bg-blue-800 text-blue-200 border border-blue-700' },
+  { value: 'dismissed', label: 'Dismiss', icon: XCircle, variant: 'secondary' },
+  { value: 'escalated', label: 'Escalate', icon: ArrowUpRight, variant: 'danger' },
+  { value: 'resolved', label: 'Mark Reviewed', icon: Check, variant: 'primary' },
 ];
 
 export default function DispositionControls({ alertId, onSuccess }) {
@@ -35,37 +37,36 @@ export default function DispositionControls({ alertId, onSuccess }) {
   }
 
   return (
-    <div>
+    <div className="space-y-3">
       <textarea
         value={notes}
         onChange={e => setNotes(e.target.value)}
-        placeholder="Disposition notes (required)..."
+        placeholder="Disposition notes (required)…"
         rows={3}
-        className="w-full bg-dark-bg border border-dark-border rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-brand-primary resize-none mb-2"
+        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-subtle resize-none focus:outline-none focus:ring-2 focus:ring-brand/30"
       />
-      <div className="flex gap-2 mb-2">
+      <div className="grid grid-cols-3 gap-2">
         {STATUSES.map(s => (
           <button
             key={s.value}
-            onClick={() => setSelected(v => v === s.value ? '' : s.value)}
-            className={`px-3 py-1 text-xs rounded font-medium transition-all ${s.cls} ${
-              selected === s.value ? 'ring-2 ring-white/40' : ''
+            onClick={() => setSelected(v => (v === s.value ? '' : s.value))}
+            className={`flex flex-col items-center gap-1 py-2.5 rounded-lg border text-xs font-medium transition-all ${
+              selected === s.value
+                ? 'border-brand bg-brand-soft text-brand ring-1 ring-brand/30'
+                : 'border-border text-ink-muted hover:border-border-strong hover:bg-surface-2'
             }`}
           >
+            <s.icon className="w-4 h-4" />
             {s.label}
           </button>
         ))}
       </div>
-      {error && <div className="text-xs text-red-400 mb-2">{error}</div>}
-      {success && <div className="text-xs text-green-400 mb-2">Disposition saved.</div>}
-      <button
-        onClick={handleSubmit}
-        disabled={!canSubmit}
-        className="px-4 py-1.5 text-xs bg-brand-primary rounded font-semibold disabled:opacity-30 hover:opacity-90 transition-opacity"
-      >
-        {submitting ? 'Saving...' : 'Submit Disposition'}
-      </button>
-      {!selected && <span className="ml-2 text-xs text-gray-600">Select a status above</span>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {success && <p className="text-xs text-emerald-600 flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Disposition saved.</p>}
+      <div className="flex items-center gap-2">
+        <Button onClick={handleSubmit} disabled={!canSubmit} loading={submitting}>Submit Disposition</Button>
+        {!selected && <span className="text-xs text-ink-subtle">Select a status above</span>}
+      </div>
     </div>
   );
 }

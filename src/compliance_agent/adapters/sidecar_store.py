@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from ..domain import AgentResult, ValidationReport
-from ..utils import json_dumps, stable_hash, utc_now
+from ..utils import json_dumps, new_id, stable_hash, utc_now
 
 
 SIDECAR_SCHEMA = """
@@ -91,6 +91,21 @@ CREATE TABLE IF NOT EXISTS human_decisions (
     rationale TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (run_id) REFERENCES agent_runs(run_id)
+);
+
+CREATE TABLE IF NOT EXISTS bank_exports (
+    export_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    decision_id TEXT NOT NULL,
+    officer_id TEXT NOT NULL,
+    export_type TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    audit_action TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES agent_runs(run_id),
+    FOREIGN KEY (decision_id) REFERENCES human_decisions(decision_id)
 );
 
 CREATE TABLE IF NOT EXISTS runtime_versions (
@@ -217,6 +232,10 @@ CREATE INDEX IF NOT EXISTS idx_baseline_snapshots_run_phase
     ON baseline_snapshots(run_id, phase);
 CREATE INDEX IF NOT EXISTS idx_money_flow_paths_run_phase
     ON money_flow_paths(run_id, phase);
+CREATE INDEX IF NOT EXISTS idx_human_decisions_run_id
+    ON human_decisions(run_id);
+CREATE INDEX IF NOT EXISTS idx_bank_exports_run_id
+    ON bank_exports(run_id);
 """
 
 
@@ -315,11 +334,11 @@ class SidecarStore:
             )
             if result.agent_name == "triage_agent":
                 self._save_recommendation(conn, run_id, result, validation)
-                self._save_triage_trace(conn, run_id, input_hash, result)
             elif result.agent_name == "risk_scoring_agent":
                 self._save_risk_score(conn, run_id, result, validation)
             elif result.agent_name == "sar_drafting_agent":
                 self._save_sar_draft(conn, run_id, result, validation)
+            self._save_runtime_trace(conn, run_id, input_hash, result)
 
     def _save_recommendation(
         self,
@@ -402,7 +421,7 @@ class SidecarStore:
             ),
         )
 
-    def _save_triage_trace(
+    def _save_runtime_trace(
         self,
         conn: sqlite3.Connection,
         run_id: str,
@@ -465,11 +484,25 @@ class SidecarStore:
             if isinstance(route, dict):
                 self._save_typology_route(conn, run_id, route)
             self._save_react_trace(conn, run_id, react_runtime)
+        elif isinstance(result.details.get("phase4_live_mcp"), dict):
+            self._save_phase4_trace(conn, run_id, result.details["phase4_live_mcp"])
 
     def _runtime_version_details(self, result: AgentResult) -> dict[str, Any]:
         runtime_version = result.details.get("runtime_version")
         if isinstance(runtime_version, dict):
             return dict(runtime_version)
+
+        phase4_runtime = result.details.get("phase4_live_mcp")
+        if isinstance(phase4_runtime, dict):
+            return {
+                "planner_type": phase4_runtime.get("planner_type") or "live_mcp_llm",
+                "model_id": phase4_runtime.get("model_id"),
+                "prompt_version": phase4_runtime.get("prompt_version") or "",
+                "tool_registry_version": phase4_runtime.get("tool_registry_version") or "unknown",
+                "policy_version": phase4_runtime.get("policy_version"),
+                "workflow": phase4_runtime.get("workflow"),
+                "runtime_bounds": phase4_runtime.get("runtime_bounds") or {},
+            }
 
         react_runtime = result.details.get("react_runtime")
         if isinstance(react_runtime, dict):
@@ -609,6 +642,67 @@ class SidecarStore:
                 row_suffix=str(step_number),
             )
 
+    def _save_phase4_trace(
+        self,
+        conn: sqlite3.Connection,
+        run_id: str,
+        phase4_runtime: dict[str, Any],
+    ) -> None:
+        workflow = str(phase4_runtime.get("workflow") or "workflow")
+        phase = f"phase4_{workflow}"
+        trace_steps = phase4_runtime.get("trace") or []
+        if isinstance(trace_steps, list):
+            for index, raw_step in enumerate(trace_steps, start=1):
+                if not isinstance(raw_step, dict):
+                    continue
+                step_number = int(raw_step.get("step_number") or index)
+                step = dict(raw_step)
+                step.setdefault(
+                    "hypothesis",
+                    step.get("hypothesis_after") or step.get("hypothesis_before"),
+                )
+                self._save_agent_step(conn, run_id, step_number, step)
+                if step.get("hypothesis"):
+                    self._save_hypothesis(conn, run_id, step_number, str(step["hypothesis"]))
+
+        tool_calls = phase4_runtime.get("tool_calls") or []
+        if isinstance(tool_calls, list):
+            for index, raw_call in enumerate(tool_calls, start=1):
+                if not isinstance(raw_call, dict) or not raw_call.get("tool_name"):
+                    continue
+                step_number = raw_call.get("step_number")
+                step_number = int(step_number) if step_number is not None else None
+                row_suffix = f"{step_number or 0}:{index}"
+                self._save_tool_call(
+                    conn,
+                    run_id,
+                    phase=phase,
+                    step_number=step_number,
+                    tool_name=str(raw_call["tool_name"]),
+                    tool_args=raw_call.get("tool_args") or {},
+                    status=str(raw_call.get("status") or "observed"),
+                    stop_reason=raw_call.get("stop_reason"),
+                    row_suffix=row_suffix,
+                )
+
+        observations = phase4_runtime.get("observations") or []
+        if isinstance(observations, list):
+            for index, raw_observation in enumerate(observations, start=1):
+                if not isinstance(raw_observation, dict) or not raw_observation.get("tool_name"):
+                    continue
+                step_number = raw_observation.get("step_number")
+                step_number = int(step_number) if step_number is not None else None
+                row_suffix = f"{step_number or 0}:{index}"
+                self._save_observation(
+                    conn,
+                    run_id,
+                    phase=phase,
+                    step_number=step_number,
+                    tool_name=str(raw_observation["tool_name"]),
+                    observation=raw_observation,
+                    row_suffix=row_suffix,
+                )
+
     def _save_agent_step(
         self,
         conn: sqlite3.Connection,
@@ -708,7 +802,7 @@ class SidecarStore:
         row_suffix: str,
     ) -> None:
         facts = observation.get("facts") or {}
-        computed_features = observation.get("computed_features") or {}
+        computed_features = observation.get("computed_features") or facts.get("computed_features") or {}
         source_refs = observation.get("source_refs") or []
         data_completeness = observation.get("data_completeness") or {}
         limitations = observation.get("limitations") or []
@@ -735,7 +829,7 @@ class SidecarStore:
                 utc_now(),
             ),
         )
-        if tool_name == "compute_behavioral_baseline":
+        if tool_name in {"compute_behavioral_baseline", "get_behavioral_baseline"}:
             self._save_baseline_snapshot(
                 conn,
                 run_id,
@@ -746,7 +840,7 @@ class SidecarStore:
                 data_completeness=data_completeness,
                 limitations=limitations,
             )
-        if tool_name == "trace_money_flow":
+        if tool_name in {"trace_money_flow", "trace_counterparty_graph"}:
             self._save_money_flow_paths(
                 conn,
                 run_id,
@@ -856,10 +950,137 @@ class SidecarStore:
             "evidence": [dict(item) for item in evidence_rows],
         }
 
+    def record_human_decision(
+        self,
+        run_id: str,
+        *,
+        officer_id: str,
+        decision: str,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        decision_id = new_id("decision")
+        created_at = utc_now()
+        with self._connection() as conn:
+            if not conn.execute(
+                "SELECT run_id FROM agent_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone():
+                raise KeyError(f"Agent run not found: {run_id}")
+            conn.execute(
+                """
+                INSERT INTO human_decisions (
+                    decision_id, run_id, officer_id, decision, rationale, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    decision_id,
+                    run_id,
+                    str(officer_id),
+                    decision,
+                    rationale,
+                    created_at,
+                ),
+            )
+        return {
+            "decision_id": decision_id,
+            "run_id": run_id,
+            "officer_id": str(officer_id),
+            "decision": decision,
+            "rationale": rationale,
+            "created_at": created_at,
+        }
+
+    def list_human_decisions(self, run_id: str) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM human_decisions
+                WHERE run_id = ?
+                ORDER BY created_at, decision_id
+                """,
+                (run_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_bank_export(
+        self,
+        run_id: str,
+        *,
+        decision_id: str,
+        officer_id: str,
+        export_type: str,
+        destination: str,
+        payload: dict[str, Any],
+        status: str = "export_recorded",
+        audit_action: str = "export_human_decision",
+    ) -> dict[str, Any]:
+        export_id = new_id("export")
+        created_at = utc_now()
+        with self._connection() as conn:
+            if not conn.execute(
+                """
+                SELECT decision_id FROM human_decisions
+                WHERE run_id = ? AND decision_id = ?
+                """,
+                (run_id, decision_id),
+            ).fetchone():
+                raise KeyError(f"Human decision not found for run: {run_id}")
+            conn.execute(
+                """
+                INSERT INTO bank_exports (
+                    export_id, run_id, decision_id, officer_id, export_type,
+                    destination, payload_json, status, audit_action, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    export_id,
+                    run_id,
+                    decision_id,
+                    str(officer_id),
+                    export_type,
+                    destination,
+                    json_dumps(payload),
+                    status,
+                    audit_action,
+                    created_at,
+                ),
+            )
+        return {
+            "export_id": export_id,
+            "run_id": run_id,
+            "decision_id": decision_id,
+            "officer_id": str(officer_id),
+            "export_type": export_type,
+            "destination": destination,
+            "payload": payload,
+            "status": status,
+            "audit_action": audit_action,
+            "created_at": created_at,
+        }
+
+    def list_bank_exports(self, run_id: str) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM bank_exports
+                WHERE run_id = ?
+                ORDER BY created_at, export_id
+                """,
+                (run_id,),
+            ).fetchall()
+        exports = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = self._loads(item.pop("payload_json"))
+            exports.append(item)
+        return exports
+
     def get_trace(self, run_id: str) -> dict[str, Any] | None:
         with self._connection() as conn:
             run = conn.execute(
-                "SELECT run_id FROM agent_runs WHERE run_id = ?",
+                "SELECT run_id, output_json FROM agent_runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
             if not run:
@@ -913,6 +1134,9 @@ class SidecarStore:
                 (run_id,),
             ).fetchall()
 
+        output = self._loads(run["output_json"]) or {}
+        phase2_trace = self._phase2_runtime_trace(output)
+
         return {
             "run_id": run_id,
             "runtime_version": (
@@ -920,6 +1144,11 @@ class SidecarStore:
                 if runtime_version
                 else None
             ),
+            "runtime_events": phase2_trace["runtime_events"],
+            "terminal_state": phase2_trace["terminal_state"],
+            "stop_reason": phase2_trace["stop_reason"],
+            "phase1_proposal": phase2_trace["phase1_proposal"],
+            "phase4_workflow": phase2_trace["phase4_workflow"],
             "typology_routes": [
                 self._typology_route_row(row) for row in typology_routes
             ],
@@ -939,6 +1168,81 @@ class SidecarStore:
             "money_flow_paths": [
                 self._money_flow_path_row(row) for row in money_flow_paths
             ],
+        }
+
+    def _phase2_runtime_trace(self, output: dict[str, Any]) -> dict[str, Any]:
+        details = output.get("details") if isinstance(output, dict) else {}
+        if not isinstance(details, dict):
+            details = {}
+        react_runtime = details.get("react_runtime")
+        if not isinstance(react_runtime, dict):
+            react_runtime = {}
+        phase1_proposal = details.get("phase1_proposal")
+        if not isinstance(phase1_proposal, dict):
+            phase1_proposal = {}
+        phase4_runtime = details.get("phase4_live_mcp")
+        if not isinstance(phase4_runtime, dict):
+            phase4_runtime = {}
+
+        runtime_events = react_runtime.get("events")
+        if not isinstance(runtime_events, list):
+            runtime_events = phase4_runtime.get("runtime_events")
+        if not isinstance(runtime_events, list):
+            runtime_events = phase1_proposal.get("runtime_events")
+        if not isinstance(runtime_events, list):
+            runtime_events = []
+
+        summary_keys = {
+            "run_id",
+            "tenant_id",
+            "subject",
+            "recommendation",
+            "confidence",
+            "score",
+            "required_human_action",
+            "model_version",
+            "prompt_version",
+            "tool_registry_version",
+            "policy_version",
+            "runtime_bounds",
+            "terminal_state",
+            "stop_reason",
+        }
+        proposal_summary = {
+            key: value
+            for key, value in phase1_proposal.items()
+            if key in summary_keys
+        }
+        phase4_summary_keys = {
+            "workflow",
+            "planner_type",
+            "model_id",
+            "prompt_version",
+            "tool_registry_version",
+            "policy_version",
+            "terminal_state",
+            "stop_reason",
+        }
+        phase4_summary = {
+            key: value
+            for key, value in phase4_runtime.items()
+            if key in phase4_summary_keys
+        }
+
+        return {
+            "runtime_events": runtime_events,
+            "terminal_state": (
+                phase1_proposal.get("terminal_state")
+                or phase4_runtime.get("terminal_state")
+                or react_runtime.get("terminal_state")
+            ),
+            "stop_reason": (
+                phase1_proposal.get("stop_reason")
+                or phase4_runtime.get("stop_reason")
+                or react_runtime.get("stop_reason")
+            ),
+            "phase1_proposal": proposal_summary or None,
+            "phase4_workflow": phase4_summary or None,
         }
 
     def find_runs_by_idempotency_key(

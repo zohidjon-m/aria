@@ -4,7 +4,9 @@ import asyncio
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -24,7 +26,9 @@ from ..contracts.phase1 import (
     MCPRequestEnvelope,
     MCPResponseEnvelope,
     MCPSourceRef,
+    RuntimeEvent,
     RuntimeBounds,
+    RuntimeState,
     ValidationStatus,
 )
 from ..contracts.tool_catalog import (
@@ -46,6 +50,32 @@ TOOL_ERROR = "tool_error"
 SCHEMA_ERROR = "schema_error"
 NO_PROGRESS = "no_progress"
 BUDGET_EXHAUSTED = "budget_exhausted"
+CRITICAL_SIGNAL_FOUND = "critical_signal_found"
+INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+TIMEOUT = "timeout"
+
+FAIL_SAFE_STOP_REASONS = {
+    INSUFFICIENT_EVIDENCE,
+    TOOL_DENIED,
+    TOOL_ERROR,
+    SCHEMA_ERROR,
+    NO_PROGRESS,
+    BUDGET_EXHAUSTED,
+    TIMEOUT,
+}
+
+ALLOWED_RUNTIME_TRANSITIONS: dict[RuntimeState, set[RuntimeState]] = {
+    "created": {"context_loaded", "validating", "failed_safe"},
+    "context_loaded": {"planning", "validating", "failed_safe"},
+    "planning": {"tool_requested", "validating", "failed_safe"},
+    "tool_requested": {"tool_executed", "validating", "failed_safe"},
+    "tool_executed": {"observing", "validating", "failed_safe"},
+    "observing": {"revising", "validating", "failed_safe"},
+    "revising": {"planning", "validating", "failed_safe"},
+    "validating": {"proposed", "failed_safe"},
+    "proposed": set(),
+    "failed_safe": set(),
+}
 
 ENTITY_TABLES = {
     "account": "accounts",
@@ -107,6 +137,63 @@ class LiveMCPAgentConfig:
     model_id: str
     runtime_bounds: RuntimeBounds = field(default_factory=RuntimeBounds)
     timeout_seconds: float = 30.0
+    prompt_version: str = PROMPT_VERSION
+    tool_registry_version: str = TOOL_REGISTRY_VERSION
+    policy_version: str = POLICY_VERSION
+
+
+@dataclass
+class _RuntimeStateMachine:
+    """Small state machine and append-only event ledger for the live MCP POC."""
+
+    run_id: str
+    state: RuntimeState = "created"
+    events: list[RuntimeEvent] = field(default_factory=list)
+
+    def emit(
+        self,
+        state: RuntimeState,
+        event_type: str,
+        *,
+        step_number: int | None = None,
+        tool_name: str | None = None,
+        tool_args: dict[str, Any] | None = None,
+        status: str | None = None,
+        stop_reason: str | None = None,
+        hypothesis_before: str | None = None,
+        hypothesis_after: str | None = None,
+        audit_id: str | None = None,
+        policy_decisions: list[Any] | None = None,
+        data_completeness: DataCompleteness | None = None,
+        error: str | None = None,
+    ) -> RuntimeEvent:
+        if state != self.state:
+            allowed = ALLOWED_RUNTIME_TRANSITIONS[self.state]
+            if state not in allowed:
+                raise RuntimeError(
+                    f"Invalid runtime transition {self.state!r} -> {state!r}"
+                )
+        event = RuntimeEvent(
+            event_id=new_id("evt"),
+            sequence_number=len(self.events) + 1,
+            state=state,
+            event_type=event_type,
+            step_number=step_number,
+            tool_name=tool_name,
+            tool_args=tool_args or {},
+            status=status,
+            stop_reason=stop_reason,
+            hypothesis_before=hypothesis_before,
+            hypothesis_after=hypothesis_after,
+            audit_id=audit_id,
+            policy_decisions=policy_decisions or [],
+            data_completeness=data_completeness,
+            error=error,
+            created_at=_utc_now(),
+        )
+        self.state = state
+        self.events.append(event)
+        return event
 
 
 class InProcessMCPToolClient:
@@ -188,14 +275,65 @@ class LiveMCPAgent:
         run_id = new_id("run")
         bounds = request.runtime_bounds or self.config.runtime_bounds
         allowed_tools = set(self.tool_client.list_tools())
+        deadline = time.monotonic() + bounds.timeout_seconds
+        state_machine = _RuntimeStateMachine(run_id)
         observations: list[AgentObservation] = []
         tool_calls: list[AgentToolCall] = []
         trace: list[AgentTraceStep] = []
         seen_calls: set[str] = set()
         hypothesis = "Initial hypothesis requires scoped MCP evidence."
         stop_reason = BUDGET_EXHAUSTED
+        metered_cost_usd = 0.0
+
+        state_machine.emit(
+            "created",
+            "runtime_created",
+            status="started",
+            tool_args={
+                "allowed_tools": sorted(allowed_tools),
+                "runtime_bounds": bounds.model_dump(mode="json"),
+                "cost_budget": {
+                    "max_cost_usd": bounds.max_cost_usd,
+                    "metered_cost_usd": metered_cost_usd,
+                    "enforcement": "no_provider_usage_metadata",
+                },
+            },
+        )
+        state_machine.emit(
+            "context_loaded",
+            "context_loaded",
+            status="accepted",
+            tool_args={
+                "subject": request.subject.model_dump(mode="json"),
+                "scope": request.scope.model_dump(mode="json"),
+            },
+            hypothesis_after=hypothesis,
+        )
 
         for step_number in range(1, bounds.max_steps + 1):
+            if _deadline_expired(deadline):
+                stop_reason = TIMEOUT
+                trace.append(
+                    AgentTraceStep(
+                        step_number=step_number,
+                        status="failed_safe",
+                        hypothesis_before=hypothesis,
+                        hypothesis_after=hypothesis,
+                        stop_reason=stop_reason,
+                        error="Runtime timeout elapsed before planner action.",
+                    )
+                )
+                state_machine.emit(
+                    state_machine.state,
+                    "runtime_timeout",
+                    step_number=step_number,
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=hypothesis,
+                    error="Runtime timeout elapsed before planner action.",
+                )
+                break
             if len(tool_calls) >= bounds.max_tool_calls:
                 stop_reason = BUDGET_EXHAUSTED
                 trace.append(
@@ -207,8 +345,26 @@ class LiveMCPAgent:
                         stop_reason=stop_reason,
                     )
                 )
+                state_machine.emit(
+                    state_machine.state,
+                    "tool_budget_exhausted",
+                    step_number=step_number,
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=hypothesis,
+                    error="Tool-call budget exhausted before planner action.",
+                )
                 break
 
+            state_machine.emit(
+                "planning",
+                "planner_requested",
+                step_number=step_number,
+                status="started",
+                hypothesis_before=hypothesis,
+                hypothesis_after=hypothesis,
+            )
             try:
                 action = self._next_action(
                     request=request,
@@ -217,7 +373,34 @@ class LiveMCPAgent:
                     hypothesis=hypothesis,
                     observations=observations,
                     allowed_tools=allowed_tools,
+                    timeout_seconds=_remaining_seconds(
+                        deadline,
+                        default=self.config.timeout_seconds,
+                    ),
                 )
+            except TimeoutError as exc:
+                stop_reason = TIMEOUT
+                trace.append(
+                    AgentTraceStep(
+                        step_number=step_number,
+                        status="failed_safe",
+                        hypothesis_before=hypothesis,
+                        hypothesis_after=hypothesis,
+                        stop_reason=stop_reason,
+                        error=str(exc) or "Planner timed out.",
+                    )
+                )
+                state_machine.emit(
+                    "planning",
+                    "planner_timeout",
+                    step_number=step_number,
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=hypothesis,
+                    error=str(exc) or "Planner timed out.",
+                )
+                break
             except Exception as exc:
                 stop_reason = SCHEMA_ERROR
                 trace.append(
@@ -230,19 +413,68 @@ class LiveMCPAgent:
                         error=str(exc),
                     )
                 )
+                state_machine.emit(
+                    "planning",
+                    "planner_schema_error",
+                    step_number=step_number,
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=hypothesis,
+                    error=str(exc),
+                )
                 break
 
-            if action.stop:
-                stop_reason = COMPLETED
+            if _deadline_expired(deadline):
+                stop_reason = TIMEOUT
                 trace.append(
                     AgentTraceStep(
                         step_number=step_number,
-                        status="proposed",
+                        status="failed_safe",
+                        thought=action.thought,
+                        hypothesis_before=hypothesis,
+                        hypothesis_after=action.hypothesis,
+                        stop_reason=stop_reason,
+                        error="Runtime timeout elapsed after planner action.",
+                    )
+                )
+                state_machine.emit(
+                    "planning",
+                    "runtime_timeout",
+                    step_number=step_number,
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
+                    error="Runtime timeout elapsed after planner action.",
+                )
+                break
+
+            if action.stop:
+                stop_reason = _terminal_stop_reason(observations)
+                trace_status = (
+                    "failed_safe"
+                    if _is_fail_safe_stop_reason(stop_reason)
+                    else "proposed"
+                )
+                trace.append(
+                    AgentTraceStep(
+                        step_number=step_number,
+                        status=trace_status,
                         thought=action.thought,
                         hypothesis_before=hypothesis,
                         hypothesis_after=action.hypothesis,
                         stop_reason=stop_reason,
                     )
+                )
+                state_machine.emit(
+                    "planning",
+                    "planner_stop_selected",
+                    step_number=step_number,
+                    status=trace_status,
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
                 )
                 hypothesis = action.hypothesis
                 break
@@ -263,6 +495,18 @@ class LiveMCPAgent:
                         error="Planner selected a tool outside the phase 1 catalog.",
                     )
                 )
+                state_machine.emit(
+                    "planning",
+                    "tool_request_rejected",
+                    step_number=step_number,
+                    tool_name=action.next_tool,
+                    tool_args=dict(action.tool_args),
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
+                    error="Planner selected a tool outside the phase 1 catalog.",
+                )
                 break
             if _find_forbidden_entity_args(action.tool_args):
                 stop_reason = SCHEMA_ERROR
@@ -278,6 +522,18 @@ class LiveMCPAgent:
                         stop_reason=stop_reason,
                         error="Planner supplied forbidden scoped entity IDs.",
                     )
+                )
+                state_machine.emit(
+                    "planning",
+                    "tool_request_rejected",
+                    step_number=step_number,
+                    tool_name=action.next_tool,
+                    tool_args=dict(action.tool_args),
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
+                    error="Planner supplied forbidden scoped entity IDs.",
                 )
                 break
 
@@ -297,8 +553,31 @@ class LiveMCPAgent:
                         error="Planner repeated an already executed tool call.",
                     )
                 )
+                state_machine.emit(
+                    "planning",
+                    "tool_request_rejected",
+                    step_number=step_number,
+                    tool_name=action.next_tool,
+                    tool_args=dict(action.tool_args),
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
+                    error="Planner repeated an already executed tool call.",
+                )
                 break
             seen_calls.add(call_hash)
+
+            state_machine.emit(
+                "tool_requested",
+                "tool_requested",
+                step_number=step_number,
+                tool_name=action.next_tool,
+                tool_args=dict(action.tool_args),
+                status="accepted",
+                hypothesis_before=hypothesis,
+                hypothesis_after=action.hypothesis,
+            )
 
             envelope = MCPRequestEnvelope(
                 tenant_id=request.tenant_id,
@@ -319,8 +598,65 @@ class LiveMCPAgent:
                 correlation_id=run_id,
             )
 
+            if _deadline_expired(deadline):
+                stop_reason = TIMEOUT
+                trace.append(
+                    AgentTraceStep(
+                        step_number=step_number,
+                        status="failed_safe",
+                        thought=action.thought,
+                        hypothesis_before=hypothesis,
+                        hypothesis_after=action.hypothesis,
+                        tool_name=action.next_tool,
+                        tool_args=dict(action.tool_args),
+                        stop_reason=stop_reason,
+                        error="Runtime timeout elapsed before tool execution.",
+                    )
+                )
+                state_machine.emit(
+                    "tool_requested",
+                    "runtime_timeout",
+                    step_number=step_number,
+                    tool_name=action.next_tool,
+                    tool_args=dict(action.tool_args),
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
+                    error="Runtime timeout elapsed before tool execution.",
+                )
+                break
+
             try:
                 response = self.tool_client.call_tool(action.next_tool, envelope)
+            except TimeoutError as exc:
+                stop_reason = TIMEOUT
+                trace.append(
+                    AgentTraceStep(
+                        step_number=step_number,
+                        status="failed_safe",
+                        thought=action.thought,
+                        hypothesis_before=hypothesis,
+                        hypothesis_after=action.hypothesis,
+                        tool_name=action.next_tool,
+                        tool_args=dict(action.tool_args),
+                        stop_reason=stop_reason,
+                        error=str(exc) or "Tool call timed out.",
+                    )
+                )
+                state_machine.emit(
+                    "tool_requested",
+                    "tool_timeout",
+                    step_number=step_number,
+                    tool_name=action.next_tool,
+                    tool_args=dict(action.tool_args),
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
+                    error=str(exc) or "Tool call timed out.",
+                )
+                break
             except Exception as exc:
                 stop_reason = TOOL_ERROR
                 trace.append(
@@ -336,7 +672,21 @@ class LiveMCPAgent:
                         error=str(exc),
                     )
                 )
+                state_machine.emit(
+                    "tool_requested",
+                    "tool_error",
+                    step_number=step_number,
+                    tool_name=action.next_tool,
+                    tool_args=dict(action.tool_args),
+                    status="failed_safe",
+                    stop_reason=stop_reason,
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=action.hypothesis,
+                    error=str(exc),
+                )
                 break
+
+            timed_out_after_tool = _deadline_expired(deadline)
 
             tool_calls.append(
                 AgentToolCall(
@@ -357,6 +707,32 @@ class LiveMCPAgent:
                     limitations=response.limitations,
                 )
             )
+            state_machine.emit(
+                "tool_executed",
+                "tool_response_received",
+                step_number=step_number,
+                tool_name=action.next_tool,
+                tool_args=dict(action.tool_args),
+                status=response.status,
+                audit_id=response.audit_id,
+                policy_decisions=response.policy_decisions,
+                data_completeness=response.data_completeness,
+                hypothesis_before=hypothesis,
+                hypothesis_after=action.hypothesis,
+            )
+            state_machine.emit(
+                "observing",
+                "observation_recorded",
+                step_number=step_number,
+                tool_name=action.next_tool,
+                tool_args=dict(action.tool_args),
+                status=response.status,
+                audit_id=response.audit_id,
+                policy_decisions=response.policy_decisions,
+                data_completeness=response.data_completeness,
+                hypothesis_before=hypothesis,
+                hypothesis_after=action.hypothesis,
+            )
             trace.append(
                 AgentTraceStep(
                     step_number=step_number,
@@ -369,16 +745,77 @@ class LiveMCPAgent:
                     stop_reason=response.status if response.status != "ok" else None,
                 )
             )
+            previous_hypothesis = hypothesis
             hypothesis = action.hypothesis
+            state_machine.emit(
+                "revising",
+                "hypothesis_revised",
+                step_number=step_number,
+                tool_name=action.next_tool,
+                tool_args=dict(action.tool_args),
+                status=response.status,
+                audit_id=response.audit_id,
+                hypothesis_before=previous_hypothesis,
+                hypothesis_after=hypothesis,
+            )
 
             if response.status == "denied":
                 stop_reason = TOOL_DENIED
+                trace[-1].stop_reason = stop_reason
                 break
             if response.status == "error":
                 stop_reason = TOOL_ERROR
+                trace[-1].stop_reason = stop_reason
+                break
+            if timed_out_after_tool:
+                stop_reason = TIMEOUT
+                trace[-1].stop_reason = stop_reason
+                trace[-1].error = "Runtime timeout elapsed after tool execution."
+                break
+            if _critical_signal(observations):
+                stop_reason = CRITICAL_SIGNAL_FOUND
+                trace[-1].stop_reason = stop_reason
                 break
         else:
             stop_reason = BUDGET_EXHAUSTED
+            trace.append(
+                AgentTraceStep(
+                    step_number=bounds.max_steps,
+                    status="failed_safe",
+                    hypothesis_before=hypothesis,
+                    hypothesis_after=hypothesis,
+                    stop_reason=stop_reason,
+                    error="Step budget exhausted before terminal planner action.",
+                )
+            )
+            state_machine.emit(
+                state_machine.state,
+                "step_budget_exhausted",
+                step_number=bounds.max_steps,
+                status="failed_safe",
+                stop_reason=stop_reason,
+                hypothesis_before=hypothesis,
+                hypothesis_after=hypothesis,
+                error="Step budget exhausted before terminal planner action.",
+            )
+
+        terminal_state = _terminal_state_for_stop_reason(stop_reason)
+        state_machine.emit(
+            "validating",
+            "proposal_validation_started",
+            status="started",
+            stop_reason=stop_reason,
+            hypothesis_before=hypothesis,
+            hypothesis_after=hypothesis,
+        )
+        state_machine.emit(
+            terminal_state,
+            "proposal_terminal",
+            status=terminal_state,
+            stop_reason=stop_reason,
+            hypothesis_before=hypothesis,
+            hypothesis_after=hypothesis,
+        )
 
         return self._build_proposal(
             run_id=run_id,
@@ -387,6 +824,8 @@ class LiveMCPAgent:
             tool_calls=tool_calls,
             trace=trace,
             stop_reason=stop_reason,
+            terminal_state=terminal_state,
+            runtime_events=list(state_machine.events),
         )
 
     def run_and_persist(
@@ -416,6 +855,7 @@ class LiveMCPAgent:
         hypothesis: str,
         observations: list[AgentObservation],
         allowed_tools: set[str],
+        timeout_seconds: float,
     ) -> Phase1PlannerAction:
         raw = self.provider.complete(
             messages=[
@@ -425,17 +865,21 @@ class LiveMCPAgent:
                         "You are a bounded AML investigation planner. Return one strict JSON object only. "
                         "You may choose only a listed MCP tool, provide bounded tool_args, update the current "
                         "hypothesis, or stop. Do not include alert_id, customer_id, account_id, transaction_id, "
-                        "or case_id in tool_args. Do not request SQL. Do not decide SAR filing or final dismissal."
+                        "or case_id in tool_args. Do not request SQL. Do not decide SAR filing, final dismissal, "
+                        "officer permissions, or final numeric risk scores. For risk scoring, gather and explain "
+                        "evidence only; deterministic policy computes the score. For SAR drafting, gather case "
+                        "facts for a draft narrative only."
                     ),
                 },
                 {
                     "role": "user",
                     "content": json.dumps(
                         {
-                            "prompt_version": PROMPT_VERSION,
+                            "prompt_version": self.config.prompt_version,
                             "required_json_schema": Phase1PlannerAction.model_json_schema(),
                             "run_id": run_id,
                             "step_number": step_number,
+                            "purpose": request.purpose,
                             "subject": request.subject.model_dump(mode="json"),
                             "current_hypothesis": hypothesis,
                             "allowed_tools": sorted(allowed_tools),
@@ -455,7 +899,7 @@ class LiveMCPAgent:
             ],
             model=self.config.model_id,
             response_schema=Phase1PlannerAction.model_json_schema(),
-            timeout_seconds=self.config.timeout_seconds,
+            timeout_seconds=timeout_seconds,
         )
         try:
             decoded = json.loads(raw)
@@ -475,6 +919,8 @@ class LiveMCPAgent:
         tool_calls: list[AgentToolCall],
         trace: list[AgentTraceStep],
         stop_reason: str,
+        terminal_state: RuntimeState,
+        runtime_events: list[RuntimeEvent],
     ) -> AgentProposal:
         evidence_refs = _dedupe_source_refs(
             [ref for observation in observations for ref in observation.source_refs]
@@ -505,11 +951,14 @@ class LiveMCPAgent:
             data_completeness=completeness,
             required_human_action=_human_action(recommendation),
             model_version=self.config.model_id,
-            prompt_version=PROMPT_VERSION,
-            tool_registry_version=TOOL_REGISTRY_VERSION,
-            policy_version=POLICY_VERSION,
+            prompt_version=self.config.prompt_version,
+            tool_registry_version=self.config.tool_registry_version,
+            policy_version=self.config.policy_version,
             runtime_bounds=request.runtime_bounds,
             validation_status=validation,
+            terminal_state=terminal_state,
+            stop_reason=stop_reason,
+            runtime_events=runtime_events,
             trace=trace,
             tool_calls=tool_calls,
             observations=observations,
@@ -613,6 +1062,7 @@ def _sidecar_react_runtime(proposal: AgentProposal) -> dict[str, Any]:
         "max_steps": proposal.runtime_bounds.max_steps,
         "max_tool_calls": proposal.runtime_bounds.max_tool_calls,
         "tool_call_count": len(proposal.tool_calls),
+        "events": [event.model_dump(mode="json") for event in proposal.runtime_events],
         "steps": [
             {
                 "step_number": step.step_number,
@@ -632,6 +1082,8 @@ def _sidecar_react_runtime(proposal: AgentProposal) -> dict[str, Any]:
 
 
 def _proposal_stop_reason(proposal: AgentProposal) -> str:
+    if proposal.stop_reason:
+        return proposal.stop_reason
     for step in reversed(proposal.trace):
         if step.stop_reason:
             return step.stop_reason
@@ -639,7 +1091,9 @@ def _proposal_stop_reason(proposal: AgentProposal) -> str:
 
 
 def _recommendation(observations: list[AgentObservation], stop_reason: str) -> str:
-    if stop_reason in {TOOL_DENIED, TOOL_ERROR, SCHEMA_ERROR, NO_PROGRESS, BUDGET_EXHAUSTED}:
+    if stop_reason == CRITICAL_SIGNAL_FOUND:
+        return "escalate"
+    if stop_reason in FAIL_SAFE_STOP_REASONS:
         return "needs_investigation"
     if _critical_signal(observations):
         return "escalate"
@@ -696,6 +1150,26 @@ def _baseline_assessment(observations: list[AgentObservation]) -> str | None:
         computed = observation.facts.get("computed_features") or {}
         return computed.get("baseline_assessment")
     return None
+
+
+def _terminal_stop_reason(observations: list[AgentObservation]) -> str:
+    if _critical_signal(observations):
+        return CRITICAL_SIGNAL_FOUND
+    if not observations:
+        return INSUFFICIENT_EVIDENCE
+    if not _combined_completeness(observations).complete:
+        return INSUFFICIENT_EVIDENCE
+    return COMPLETED
+
+
+def _terminal_state_for_stop_reason(stop_reason: str) -> RuntimeState:
+    if _is_fail_safe_stop_reason(stop_reason):
+        return "failed_safe"
+    return "proposed"
+
+
+def _is_fail_safe_stop_reason(stop_reason: str) -> bool:
+    return stop_reason in FAIL_SAFE_STOP_REASONS
 
 
 def _claims(request: AgentRunRequest, observations: list[AgentObservation]) -> list[FactualClaim]:
@@ -797,7 +1271,7 @@ def _combined_completeness(observations: list[AgentObservation]) -> DataComplete
 def _confidence(recommendation: str, validation_status: str, stop_reason: str) -> float:
     if validation_status != "passed":
         return 0.35
-    if stop_reason in {TOOL_DENIED, TOOL_ERROR, SCHEMA_ERROR, NO_PROGRESS, BUDGET_EXHAUSTED}:
+    if stop_reason in FAIL_SAFE_STOP_REASONS:
         return 0.45
     if recommendation == "escalate":
         return 0.86
@@ -871,6 +1345,21 @@ def _find_forbidden_entity_args(value: Any, path: str = "$") -> list[str]:
         for index, item in enumerate(value):
             found.extend(_find_forbidden_entity_args(item, f"{path}[{index}]"))
     return found
+
+
+def _remaining_seconds(deadline: float, *, default: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return 0.001
+    return max(0.001, min(default, remaining))
+
+
+def _deadline_expired(deadline: float) -> bool:
+    return time.monotonic() >= deadline
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _table_for_entity(entity_type: str) -> str:

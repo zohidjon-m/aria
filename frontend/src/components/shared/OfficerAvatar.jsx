@@ -1,11 +1,12 @@
+const BG = [
+  'bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-orange-500',
+  'bg-teal-500', 'bg-rose-500', 'bg-cyan-600', 'bg-indigo-500',
+];
 
-const BG_COLORS = [
-  'bg-blue-700', 'bg-green-700', 'bg-purple-700', 'bg-orange-700',
-  'bg-teal-700', 'bg-rose-700', 'bg-cyan-700', 'bg-indigo-700',
-]
-
-function hash(id) {
-  return Math.abs((id || 0) * 2654435761) % BG_COLORS.length
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h) % BG.length;
 }
 
 export default function OfficerAvatar({ officerId, name, size = 'sm' }) {
@@ -14,15 +15,16 @@ export default function OfficerAvatar({ officerId, name, size = 'sm' }) {
     .slice(0, 2)
     .map(w => w[0] || '')
     .join('')
-    .toUpperCase()
-  const bg = BG_COLORS[hash(officerId)]
-  const sz = size === 'sm' ? 'w-7 h-7 text-xs' : 'w-9 h-9 text-sm'
+    .toUpperCase() || '?';
+  const key = name || (officerId != null ? String(officerId) : '?');
+  const bg = BG[hashStr(key)];
+  const sz = size === 'sm' ? 'w-7 h-7 text-[11px]' : 'w-9 h-9 text-sm';
   return (
     <span
       title={name || `Officer #${officerId}`}
-      className={`${bg} ${sz} rounded-full flex items-center justify-center font-semibold text-white shrink-0`}
+      className={`${bg} ${sz} rounded-full flex items-center justify-center font-semibold text-white shrink-0 ring-2 ring-white shadow-sm`}
     >
-      {initials || '?'}
+      {initials}
     </span>
-  )
+  );
 }

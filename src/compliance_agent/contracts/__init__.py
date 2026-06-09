@@ -10,13 +10,28 @@ from .phase1 import (
     MCPResponseEnvelope,
     MCPSourceRef,
     PolicyDecision,
+    RuntimeEvent,
     RuntimeBounds,
+    RuntimeState,
     SubjectRef,
     ToolCatalogItem,
     ToolExecutionScope,
     ValidationStatus,
 )
+from .phase3 import (
+    Phase3AuditEvent,
+    Phase3MCPRequestEnvelope,
+    Phase3MCPResponseEnvelope,
+    Phase3PolicyDecision,
+    Phase3ScopeExpansionPolicy,
+    Phase3ToolMetadata,
+)
 from .tool_catalog import PHASE1_TOOL_CATALOG, PHASE1_TOOL_NAMES
+from .tool_catalog_phase3 import (
+    PHASE3_TOOL_CATALOG,
+    PHASE3_TOOL_NAMES,
+    PHASE3_TOOL_REGISTRY_VERSION,
+)
 
 __all__ = [
     "AgentObservation",
@@ -31,8 +46,19 @@ __all__ = [
     "MCPSourceRef",
     "PHASE1_TOOL_CATALOG",
     "PHASE1_TOOL_NAMES",
+    "PHASE3_TOOL_CATALOG",
+    "PHASE3_TOOL_NAMES",
+    "PHASE3_TOOL_REGISTRY_VERSION",
+    "Phase3AuditEvent",
+    "Phase3MCPRequestEnvelope",
+    "Phase3MCPResponseEnvelope",
+    "Phase3PolicyDecision",
+    "Phase3ScopeExpansionPolicy",
+    "Phase3ToolMetadata",
     "PolicyDecision",
+    "RuntimeEvent",
     "RuntimeBounds",
+    "RuntimeState",
     "SubjectRef",
     "ToolCatalogItem",
     "ToolExecutionScope",

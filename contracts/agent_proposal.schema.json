@@ -341,9 +341,53 @@
       "title": "MCPSourceRef",
       "type": "object"
     },
+    "PolicyDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "allow",
+            "deny",
+            "limit",
+            "audit"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "policy": {
+          "minLength": 1,
+          "title": "Policy",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "policy",
+        "reason"
+      ],
+      "title": "PolicyDecision",
+      "type": "object"
+    },
     "RuntimeBounds": {
       "additionalProperties": false,
       "properties": {
+        "max_cost_usd": {
+          "default": 1.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Max Cost Usd",
+          "type": "number"
+        },
         "max_graph_hops": {
           "default": 4,
           "maximum": 8,
@@ -381,6 +425,176 @@
         }
       },
       "title": "RuntimeBounds",
+      "type": "object"
+    },
+    "RuntimeEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "audit_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audit Id"
+        },
+        "created_at": {
+          "minLength": 1,
+          "title": "Created At",
+          "type": "string"
+        },
+        "data_completeness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DataCompleteness"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "minLength": 1,
+          "title": "Event Type",
+          "type": "string"
+        },
+        "hypothesis_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hypothesis After"
+        },
+        "hypothesis_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hypothesis Before"
+        },
+        "policy_decisions": {
+          "items": {
+            "$ref": "#/$defs/PolicyDecision"
+          },
+          "title": "Policy Decisions",
+          "type": "array"
+        },
+        "sequence_number": {
+          "minimum": 1,
+          "title": "Sequence Number",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "created",
+            "context_loaded",
+            "planning",
+            "tool_requested",
+            "tool_executed",
+            "observing",
+            "revising",
+            "validating",
+            "proposed",
+            "failed_safe"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "step_number": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step Number"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Reason"
+        },
+        "tool_args": {
+          "additionalProperties": true,
+          "title": "Tool Args",
+          "type": "object"
+        },
+        "tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name"
+        }
+      },
+      "required": [
+        "event_id",
+        "sequence_number",
+        "state",
+        "event_type",
+        "created_at"
+      ],
+      "title": "RuntimeEvent",
       "type": "object"
     },
     "SubjectRef": {
@@ -535,11 +749,23 @@
     "runtime_bounds": {
       "$ref": "#/$defs/RuntimeBounds"
     },
+    "runtime_events": {
+      "items": {
+        "$ref": "#/$defs/RuntimeEvent"
+      },
+      "title": "Runtime Events",
+      "type": "array"
+    },
     "score": {
       "maximum": 100.0,
       "minimum": 0.0,
       "title": "Score",
       "type": "number"
+    },
+    "stop_reason": {
+      "minLength": 1,
+      "title": "Stop Reason",
+      "type": "string"
     },
     "structured_reasoning": {
       "items": {
@@ -554,6 +780,22 @@
     "tenant_id": {
       "minLength": 1,
       "title": "Tenant Id",
+      "type": "string"
+    },
+    "terminal_state": {
+      "enum": [
+        "created",
+        "context_loaded",
+        "planning",
+        "tool_requested",
+        "tool_executed",
+        "observing",
+        "revising",
+        "validating",
+        "proposed",
+        "failed_safe"
+      ],
+      "title": "Terminal State",
       "type": "string"
     },
     "tool_calls": {
@@ -592,8 +834,10 @@
     "tool_registry_version",
     "policy_version",
     "runtime_bounds",
-    "validation_status"
+    "validation_status",
+    "terminal_state",
+    "stop_reason"
   ],
   "title": "AgentProposal",
   "type": "object"
-}
+}

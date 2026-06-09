@@ -1,0 +1,228 @@
+{
+  "$defs": {
+    "Phase3AuthContext": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_type": {
+          "enum": [
+            "officer",
+            "service",
+            "agent_runtime"
+          ],
+          "title": "Actor Type",
+          "type": "string"
+        },
+        "granted_permissions": {
+          "items": {
+            "enum": [
+              "can_view_alerts",
+              "can_manage_cases",
+              "can_file_sar",
+              "can_manage_rules",
+              "can_manage_users",
+              "service_identity"
+            ],
+            "type": "string"
+          },
+          "title": "Granted Permissions",
+          "type": "array"
+        },
+        "role_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Name"
+        },
+        "token_audience": {
+          "minLength": 1,
+          "title": "Token Audience",
+          "type": "string"
+        },
+        "token_subject": {
+          "minLength": 1,
+          "title": "Token Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "actor_type",
+        "token_subject",
+        "token_audience"
+      ],
+      "title": "Phase3AuthContext",
+      "type": "object"
+    },
+    "SubjectRef": {
+      "additionalProperties": false,
+      "properties": {
+        "alert_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alert Id"
+        },
+        "case_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Case Id"
+        },
+        "customer_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Id"
+        }
+      },
+      "title": "SubjectRef",
+      "type": "object"
+    },
+    "ToolExecutionScope": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_account_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Account Ids",
+          "type": "array"
+        },
+        "allowed_case_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Case Ids",
+          "type": "array"
+        },
+        "allowed_customer_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Customer Ids",
+          "type": "array"
+        },
+        "allowed_transaction_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Allowed Transaction Ids",
+          "type": "array"
+        }
+      },
+      "title": "ToolExecutionScope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "agent_run_id": {
+      "minLength": 1,
+      "title": "Agent Run Id",
+      "type": "string"
+    },
+    "auth_context": {
+      "$ref": "#/$defs/Phase3AuthContext"
+    },
+    "correlation_id": {
+      "minLength": 1,
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "officer_id": {
+      "minLength": 1,
+      "title": "Officer Id",
+      "type": "string"
+    },
+    "policy_version": {
+      "minLength": 1,
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "purpose": {
+      "enum": [
+        "triage",
+        "investigation",
+        "risk_scoring",
+        "sar_drafting",
+        "evaluation"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "requested_by": {
+      "enum": [
+        "agent",
+        "officer",
+        "service"
+      ],
+      "title": "Requested By",
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/ToolExecutionScope"
+    },
+    "subject": {
+      "$ref": "#/$defs/SubjectRef"
+    },
+    "tenant_id": {
+      "minLength": 1,
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "tool_args": {
+      "additionalProperties": true,
+      "title": "Tool Args",
+      "type": "object"
+    },
+    "tool_name": {
+      "minLength": 1,
+      "title": "Tool Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "officer_id",
+    "agent_run_id",
+    "purpose",
+    "requested_by",
+    "subject",
+    "scope",
+    "tool_name",
+    "auth_context",
+    "policy_version",
+    "idempotency_key",
+    "correlation_id"
+  ],
+  "title": "Phase3MCPRequestEnvelope",
+  "type": "object"
+}

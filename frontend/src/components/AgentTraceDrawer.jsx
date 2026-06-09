@@ -1,80 +1,77 @@
 import { useState, useEffect } from 'react';
+import { X, Brain, Wrench, Eye, GitBranch, Flag, CheckCircle2 } from 'lucide-react';
 import { getAgentTrace } from '../api/client';
-import LoadingSpinner from './shared/LoadingSpinner';
+import Spinner from './ui/Spinner';
 
-const STEP_ICONS = {
-  planning: 'P',
-  tool_executed: 'T',
-  observing: 'O',
-  revising: 'R',
-  proposed: 'F',
-  failed_safe: '!',
+const STEP_META = {
+  planning: { icon: Brain, tone: 'blue' },
+  tool_executed: { icon: Wrench, tone: 'violet' },
+  observed: { icon: Wrench, tone: 'violet' },
+  observing: { icon: Eye, tone: 'blue' },
+  revising: { icon: GitBranch, tone: 'amber' },
+  proposed: { icon: CheckCircle2, tone: 'emerald' },
+  failed_safe: { icon: Flag, tone: 'red' },
 };
 
-const STEP_COLORS = {
-  planning: 'text-blue-400',
-  tool_executed: 'text-purple-400',
-  observing: 'text-cyan-400',
-  revising: 'text-yellow-400',
-  proposed: 'text-green-400',
-  failed_safe: 'text-red-400',
-};
+function toneClass(tone) {
+  return {
+    blue: 'bg-blue-50 text-blue-600',
+    violet: 'bg-violet-50 text-violet-600',
+    amber: 'bg-amber-50 text-amber-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    red: 'bg-red-50 text-red-600',
+    slate: 'bg-slate-100 text-slate-500',
+  }[tone];
+}
 
 function StepRow({ step }) {
   const [open, setOpen] = useState(false);
-  const icon = STEP_ICONS[step.type] || '?';
-  const color = STEP_COLORS[step.type] || 'text-gray-400';
+  const inner = step.step || {};
+  const type = step.type || step.status || inner.status;
+  const thought = step.thought || inner.thought;
+  const hypothesisBefore = step.hypothesis_before || inner.hypothesis_before;
+  const hypothesisAfter = step.hypothesis_after || step.hypothesis || inner.hypothesis_after || inner.hypothesis;
+  const toolName = step.tool_name || inner.tool_name;
+  const toolArgs = step.tool_args || inner.tool_args;
+  const observation = step.observation || inner.observation;
+  const meta = STEP_META[type] || { icon: Brain, tone: 'slate' };
+  const Icon = meta.icon;
 
   return (
-    <div className="border-b border-dark-border last:border-0">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-start gap-2 py-2 text-left hover:bg-dark-bg transition-colors"
-      >
-        <span className={`w-5 h-5 flex items-center justify-center rounded text-xs font-bold shrink-0 mt-0.5 ${color} border border-current`}>
-          {icon}
+    <div className="border border-border rounded-lg overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-start gap-2.5 p-3 text-left hover:bg-surface-2 transition-colors">
+        <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${toneClass(meta.tone)}`}>
+          <Icon className="w-4 h-4" />
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold text-gray-300 uppercase tracking-wide">{step.type}</div>
-          {step.thought && (
-            <div className="text-xs text-gray-400 truncate mt-0.5">{step.thought}</div>
-          )}
+          <div className="text-xs font-semibold text-ink uppercase tracking-wide">{(type || 'step').replace(/_/g, ' ')}</div>
+          {thought && <div className="text-sm text-ink-muted truncate mt-0.5">{thought}</div>}
         </div>
-        <span className="text-gray-600 text-xs">{open ? '▲' : '▼'}</span>
+        <span className="text-ink-subtle text-xs mt-1">{open ? 'Close' : 'Open'}</span>
       </button>
       {open && (
-        <div className="pl-7 pb-2 text-xs space-y-1">
-          {step.thought && (
-            <div className="text-gray-300 leading-relaxed">{step.thought}</div>
-          )}
-          {step.hypothesis_before && (
-            <div>
-              <span className="text-gray-500">Hypothesis before: </span>
-              <span className="text-gray-400">{step.hypothesis_before}</span>
+        <div className="px-3 pb-3 pl-12 text-sm space-y-1.5">
+          {thought && <p className="text-ink-muted leading-relaxed">{thought}</p>}
+          {hypothesisBefore && <p className="text-xs"><span className="text-ink-subtle">Hypothesis before: </span><span className="text-ink-muted">{hypothesisBefore}</span></p>}
+          {hypothesisAfter && <p className="text-xs"><span className="text-ink-subtle">Hypothesis after: </span><span className="text-amber-700">{hypothesisAfter}</span></p>}
+          {toolName && <p className="text-xs"><span className="text-ink-subtle">Tool: </span><span className="text-violet-700 font-mono">{toolName}</span></p>}
+          {toolArgs && <pre className="bg-surface-2 rounded-lg p-2 overflow-x-auto text-xs text-ink-muted font-mono">{JSON.stringify(toolArgs, null, 2)}</pre>}
+          {observation && (
+            <div className="bg-surface-2 rounded-lg p-2 text-xs text-ink-muted">
+              {typeof observation === 'string' ? observation : JSON.stringify(observation)}
             </div>
-          )}
-          {step.hypothesis_after && (
-            <div>
-              <span className="text-gray-500">Hypothesis after: </span>
-              <span className="text-amber-300">{step.hypothesis_after}</span>
-            </div>
-          )}
-          {step.tool_name && (
-            <div>
-              <span className="text-gray-500">Tool: </span>
-              <span className="text-purple-300 font-mono">{step.tool_name}</span>
-            </div>
-          )}
-          {step.tool_args && (
-            <pre className="bg-dark-bg rounded p-2 overflow-x-auto text-gray-400 text-xs mt-1">
-              {JSON.stringify(step.tool_args, null, 2)}
-            </pre>
-          )}
-          {step.observation && (
-            <div className="bg-dark-bg rounded p-2 text-gray-400 mt-1">{step.observation}</div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold text-ink-subtle uppercase tracking-wide mb-2">{title}</p>
+      <div className="space-y-2">{children}</div>
     </div>
   );
 }
@@ -89,91 +86,72 @@ export default function AgentTraceDrawer({ runId, isOpen, onClose }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
-    getAgentTrace(runId)
-      .then(setTrace)
-      .catch(e => setError(e.response?.data?.detail || e.message))
-      .finally(() => setLoading(false));
+    getAgentTrace(runId).then(setTrace).catch(e => setError(e.response?.data?.detail || e.message)).finally(() => setLoading(false));
   }, [isOpen, runId]);
 
   useEffect(() => {
-    function handleKeyDown(e) {
-      if (e.key === 'Escape' && isOpen) onClose();
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    function onKey(e) { if (e.key === 'Escape' && isOpen) onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="fixed inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-dark-panel border-l border-dark-border flex flex-col h-full overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border shrink-0">
+      <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-canvas border-l border-border flex flex-col h-full overflow-hidden shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-surface shrink-0">
           <div>
-            <div className="text-sm font-semibold text-gray-200">Agent Trace</div>
-            {runId && <div className="text-xs text-gray-500 font-mono">{runId}</div>}
+            <div className="text-sm font-semibold text-ink">Agent Reasoning Trace</div>
+            {runId && <div className="text-xs text-ink-subtle font-mono">{runId}</div>}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none">&#x2715;</button>
+          <button onClick={onClose} className="text-ink-subtle hover:text-ink p-1 rounded-lg hover:bg-surface-2"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3">
-          {loading && <LoadingSpinner />}
-          {error && <div className="text-xs text-red-400">{error}</div>}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {loading && <Spinner size="lg" label="Loading trace..." />}
+          {error && <p className="text-sm text-red-600">{error}</p>}
           {trace && (
-            <div className="space-y-4">
-              {trace.agent_steps?.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Agent Steps</div>
-                  {trace.agent_steps.map((s, i) => <StepRow key={i} step={s} />)}
-                </div>
+            <>
+              {trace.runtime_events?.length > 0 && (
+                <Section title={`Runtime Events (${trace.runtime_events.length})`}>
+                  {trace.runtime_events.map((event, i) => (
+                    <pre key={i} className="bg-surface border border-border rounded-lg p-2 overflow-x-auto text-xs text-ink-muted font-mono">{JSON.stringify(event, null, 2)}</pre>
+                  ))}
+                </Section>
               )}
-
+              {trace.agent_steps?.length > 0 && (
+                <Section title={`Agent Steps (${trace.agent_steps.length})`}>
+                  {trace.agent_steps.map((s, i) => <StepRow key={i} step={s} />)}
+                </Section>
+              )}
               {trace.tool_calls?.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Tool Calls</div>
+                <Section title={`Tool Calls (${trace.tool_calls.length})`}>
                   {trace.tool_calls.map((t, i) => (
-                    <div key={i} className="mb-2 text-xs">
-                      <span className="text-purple-400 font-mono">{t.tool_name}</span>
-                      <pre className="bg-dark-bg rounded p-2 overflow-x-auto text-gray-400 mt-1 text-xs">
-                        {JSON.stringify(t.args || t, null, 2)}
-                      </pre>
+                    <div key={i} className="border border-border rounded-lg p-3">
+                      <span className="text-xs font-mono text-violet-700 font-medium flex items-center gap-1.5"><Wrench className="w-3.5 h-3.5" /> {t.tool_name}</span>
+                      <pre className="bg-surface-2 rounded-lg p-2 mt-2 overflow-x-auto text-xs text-ink-muted font-mono">{JSON.stringify(t.tool_args || t.args || t, null, 2)}</pre>
                     </div>
                   ))}
-                </div>
+                </Section>
               )}
-
               {trace.baseline_snapshots?.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Baseline Snapshots</div>
-                  {trace.baseline_snapshots.map((s, i) => (
-                    <pre key={i} className="bg-dark-bg rounded p-2 overflow-x-auto text-gray-400 text-xs mb-2">
-                      {JSON.stringify(s, null, 2)}
-                    </pre>
-                  ))}
-                </div>
+                <Section title="Baseline Snapshots">
+                  {trace.baseline_snapshots.map((s, i) => <pre key={i} className="bg-surface border border-border rounded-lg p-2 overflow-x-auto text-xs text-ink-muted font-mono">{JSON.stringify(s, null, 2)}</pre>)}
+                </Section>
               )}
-
               {trace.money_flow_paths?.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Money Flow Paths</div>
-                  {trace.money_flow_paths.map((p, i) => (
-                    <pre key={i} className="bg-dark-bg rounded p-2 overflow-x-auto text-gray-400 text-xs mb-2">
-                      {JSON.stringify(p, null, 2)}
-                    </pre>
-                  ))}
-                </div>
+                <Section title="Money Flow Paths">
+                  {trace.money_flow_paths.map((p, i) => <pre key={i} className="bg-surface border border-border rounded-lg p-2 overflow-x-auto text-xs text-ink-muted font-mono">{JSON.stringify(p, null, 2)}</pre>)}
+                </Section>
               )}
-
               {trace.hypotheses?.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Hypotheses</div>
-                  {trace.hypotheses.map((h, i) => (
-                    <div key={i} className="text-xs text-gray-300 py-1 border-b border-dark-border last:border-0">{h}</div>
-                  ))}
-                </div>
+                <Section title="Hypotheses">
+                  {trace.hypotheses.map((h, i) => <div key={i} className="text-sm text-ink-muted border border-border rounded-lg p-2">{typeof h === 'string' ? h : h.hypothesis || JSON.stringify(h)}</div>)}
+                </Section>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>

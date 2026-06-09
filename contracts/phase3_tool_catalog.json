@@ -1,0 +1,1350 @@
+{
+  "tool_registry_version": "phase3_bank_mcp_contract_v1",
+  "tools": [
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return scoped customer, account, and latest profile facts.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_customer_profile_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_customer_profile",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_customer_profile"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_customer_profile",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_customer_profile"
+            },
+            "facts": {
+              "customer_profile": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "get_customer_profile",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "lookback_days": {
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_rows": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return bounded transaction history for the scoped customer.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_transaction_history_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_transaction_history",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_transaction_history"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_transaction_history",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_transaction_history"
+            },
+            "facts": {
+              "transactions": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "get_transaction_history",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "lookback_days": {
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_rows": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return customer-relative behavioral baseline features.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_behavioral_baseline_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_behavioral_baseline",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_behavioral_baseline"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_behavioral_baseline",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_behavioral_baseline"
+            },
+            "facts": {
+              "behavioral_baseline": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "get_behavioral_baseline",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "max_rows": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return prior alerts for the scoped customer.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_prior_alerts_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_prior_alerts",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_prior_alerts"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_prior_alerts",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_prior_alerts"
+            },
+            "facts": {
+              "prior_alerts": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "get_prior_alerts",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "max_rows": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return case history and linked alert context for the scoped customer.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_case_history_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_case_history",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_case_history"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_case_history",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_case_history"
+            },
+            "facts": {
+              "case_history": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "get_case_history",
+      "notes": [],
+      "purpose": "investigation",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "max_hops": {
+            "maximum": 4,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_rows": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Trace bounded counterparty graph paths from the alert transaction.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "trace_counterparty_graph_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-trace_counterparty_graph",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "trace_counterparty_graph"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-trace_counterparty_graph",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "trace_counterparty_graph"
+            },
+            "facts": {
+              "counterparty_graph": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "trace_counterparty_graph",
+      "notes": [],
+      "purpose": "investigation",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": {
+        "audit_required": true,
+        "description": "Counterparty graph traversal may expand from the active alert transaction only through bank-owned graph policy, bounded hops, bounded rows, and audited source references.",
+        "expandable_entity_types": [
+          "account",
+          "customer",
+          "transaction",
+          "alert",
+          "case"
+        ],
+        "forbidden_tool_arg_fields": [
+          "alert_id",
+          "case_id",
+          "customer_id",
+          "account_id",
+          "transaction_id"
+        ],
+        "max_hops": 4,
+        "max_rows": 100,
+        "mode": "bounded_graph_traversal",
+        "requires_policy_decision": true
+      },
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return sanctions and PEP screening facts for the scoped customer.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "screen_sanctions_pep_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-screen_sanctions_pep",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "screen_sanctions_pep"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-screen_sanctions_pep",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "screen_sanctions_pep"
+            },
+            "facts": {
+              "screening": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "screen_sanctions_pep",
+      "notes": [],
+      "purpose": "investigation",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "max_rows": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return similar prior alerts for the scoped customer and alert rule.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_similar_alerts_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_similar_alerts",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_similar_alerts"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_similar_alerts",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_similar_alerts"
+            },
+            "facts": {
+              "similar_alerts": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "get_similar_alerts",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return the compliance rule that generated the scoped alert.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_compliance_rule_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_compliance_rule",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_compliance_rule"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_compliance_rule",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_compliance_rule"
+            },
+            "facts": {
+              "compliance_rule": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "get_compliance_rule",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "read",
+      "description": "Return bank-owned permission facts for the acting officer.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "get_officer_permissions_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-get_officer_permissions",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "get_officer_permissions"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-get_officer_permissions",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "get_officer_permissions"
+            },
+            "facts": {
+              "officer_permissions": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": false,
+      "name": "get_officer_permissions",
+      "notes": [
+        "The LLM may read permission facts supplied by the runtime but cannot grant or decide permissions."
+      ],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "none"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "comment"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "bank_write",
+      "description": "Add an officer-visible comment to a scoped alert.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "add_alert_comment_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-add_alert_comment",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "add_alert_comment"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-add_alert_comment",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "add_alert_comment"
+            },
+            "facts": {
+              "alert_comment": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": true,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "add_alert_comment",
+      "notes": [],
+      "purpose": "investigation",
+      "required_permissions": [
+        "can_view_alerts"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "bank_system_write"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "case_type": {
+            "enum": [
+              "AML",
+              "fraud",
+              "sanctions",
+              "pep",
+              "other"
+            ],
+            "type": "string"
+          },
+          "priority": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 8000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_type",
+          "priority"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "bank_write",
+      "description": "Open a new AML case for the scoped customer.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "open_case_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-open_case",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "open_case"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-open_case",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "open_case"
+            },
+            "facts": {
+              "case": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": true,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "open_case",
+      "notes": [],
+      "purpose": "investigation",
+      "required_permissions": [
+        "can_manage_cases"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "bank_system_write"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "relationship": {
+            "enum": [
+              "primary",
+              "related"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "bank_write",
+      "description": "Link the scoped alert to an authorized existing case.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "link_alert_to_case_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-link_alert_to_case",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "link_alert_to_case"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-link_alert_to_case",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "link_alert_to_case"
+            },
+            "facts": {
+              "case_alert_link": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": true,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "link_alert_to_case",
+      "notes": [],
+      "purpose": "investigation",
+      "required_permissions": [
+        "can_manage_cases"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "bank_system_write"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "decision_type": {
+            "enum": [
+              "alert_disposition",
+              "case_disposition",
+              "sar_review"
+            ],
+            "type": "string"
+          },
+          "notes": {
+            "maxLength": 8000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_type",
+          "decision"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "bank_write",
+      "description": "Export a human officer decision to the bank system of record.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "export_human_decision_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-export_human_decision",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "export_human_decision"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-export_human_decision",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "export_human_decision"
+            },
+            "facts": {
+              "human_decision_export": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "bank_mcp",
+      "human_review_required": true,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "export_human_decision",
+      "notes": [
+        "SAR-related exports must also pass bank policy for can_file_sar."
+      ],
+      "purpose": "triage",
+      "required_permissions": [
+        "can_manage_cases"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "bank_system_write"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "trace": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "trace"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "sidecar_write",
+      "description": "Persist the agent trace in the sidecar audit store.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "record_agent_trace_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-record_agent_trace",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "record_agent_trace"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-record_agent_trace",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "record_agent_trace"
+            },
+            "facts": {
+              "agent_trace": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "sidecar",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "record_agent_trace",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "service_identity"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "sidecar_persistence"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "recommendation": {
+            "enum": [
+              "likely_false_positive",
+              "needs_investigation",
+              "escalate"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "recommendation",
+          "confidence"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "sidecar_proposal",
+      "description": "Store an agent disposition proposal for human review.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "propose_alert_disposition_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-propose_alert_disposition",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "propose_alert_disposition"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-propose_alert_disposition",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "propose_alert_disposition"
+            },
+            "facts": {
+              "alert_disposition_proposal": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "sidecar",
+      "human_review_required": true,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "propose_alert_disposition",
+      "notes": [],
+      "purpose": "triage",
+      "required_permissions": [
+        "service_identity"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "proposal_only"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "factors": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "policy_version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "score": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "policy_version"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "sidecar_write",
+      "description": "Store an agent-generated risk score proposal in the sidecar.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "store_agent_risk_score_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-store_agent_risk_score",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "store_agent_risk_score"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-store_agent_risk_score",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "store_agent_risk_score"
+            },
+            "facts": {
+              "agent_risk_score": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "sidecar",
+      "human_review_required": true,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "store_agent_risk_score",
+      "notes": [],
+      "purpose": "risk_scoring",
+      "required_permissions": [
+        "service_identity"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "sidecar_persistence"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_refs": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "narrative": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "report_type": {
+            "enum": [
+              "SAR",
+              "CTR",
+              "internal_memo"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_type",
+          "narrative"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "sidecar_proposal",
+      "description": "Store a draft regulatory report narrative for authorized human review.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "draft_regulatory_report_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-draft_regulatory_report",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "draft_regulatory_report"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-draft_regulatory_report",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "draft_regulatory_report"
+            },
+            "facts": {
+              "regulatory_report_draft": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "sidecar",
+      "human_review_required": true,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "draft_regulatory_report",
+      "notes": [
+        "This tool creates drafts only. SAR filing is never an agent action."
+      ],
+      "purpose": "sar_drafting",
+      "required_permissions": [
+        "service_identity",
+        "can_file_sar"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "draft_only"
+    },
+    {
+      "args_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dataset_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "run_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "metrics"
+        ],
+        "type": "object"
+      },
+      "audit_outcomes": [
+        "success",
+        "denial",
+        "partial_response",
+        "error"
+      ],
+      "category": "sidecar_write",
+      "description": "Persist evaluation replay results and metrics in the sidecar.",
+      "deterministic_policy_required": true,
+      "examples": [
+        {
+          "name": "record_evaluation_result_contract_example",
+          "request": {
+            "agent_run_id": "run-phase3-example",
+            "correlation_id": "corr-phase3-example",
+            "idempotency_key": "idem-record_evaluation_result",
+            "officer_id": "officer-123",
+            "requested_by": "agent",
+            "tenant_id": "demo-bank",
+            "tool_args": {},
+            "tool_name": "record_evaluation_result"
+          },
+          "response": {
+            "audit_event": {
+              "audit_id": "audit-record_evaluation_result",
+              "outcome": "success",
+              "status": "ok",
+              "tool_name": "record_evaluation_result"
+            },
+            "facts": {
+              "evaluation_result": {}
+            },
+            "status": "ok"
+          }
+        }
+      ],
+      "execution_owner": "sidecar",
+      "human_review_required": false,
+      "idempotency_required": true,
+      "llm_may_request": true,
+      "name": "record_evaluation_result",
+      "notes": [],
+      "purpose": "evaluation",
+      "required_permissions": [
+        "service_identity"
+      ],
+      "response_schema": {
+        "$ref": "phase3_mcp_response_envelope.schema.json"
+      },
+      "scope_expansion_policy": null,
+      "side_effect_type": "sidecar_persistence"
+    }
+  ]
+}
