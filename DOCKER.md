@@ -1,4 +1,4 @@
-# Running Open AML Compliance Sidecar with Docker
+# Running Aria with Docker
 
 One command brings up the optional local demo stack: Postgres with seeded demo
 data, the FastAPI demo backend plus agent sidecar, and the Vite-built frontend.

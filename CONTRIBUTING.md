@@ -1,8 +1,8 @@
 # Contributing
 
-Thank you for considering a contribution to Open AML Compliance Sidecar.
+Thank you for considering a contribution to Aria.
 
-This project is a public-alpha AML investigation sidecar. Keep contributions
+Aria is a public-alpha AML investigation sidecar. Keep contributions
 aligned with the core boundary: agents investigate and propose, humans decide,
 and bank source systems remain read-only unless a bank-owned integration
 explicitly controls writes with RBAC and audit.

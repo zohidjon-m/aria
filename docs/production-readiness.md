@@ -1,8 +1,7 @@
 # Production Readiness Definition
 
-This document defines what "production ready" means for the Open AML
-Compliance Sidecar after the LLM-backed agentic loop and bank MCP integration
-are implemented.
+This document defines what "production ready" means for Aria after the
+LLM-backed agentic loop and bank MCP integration are implemented.
 
 Production ready does not mean the system autonomously clears alerts, files
 SARs, or replaces AML officers. It means the system can be deployed as a

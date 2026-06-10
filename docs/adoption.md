@@ -1,4 +1,4 @@
-# Bank Adoption Guide
+# Aria Bank Adoption Guide
 
 ## Non-Negotiable Controls
 

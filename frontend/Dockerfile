@@ -1,4 +1,4 @@
-# Open AML Compliance Sidecar demo frontend (Vite build, served with vite preview)
+# Aria demo frontend (Vite build, served with vite preview)
 FROM node:22-alpine
 
 WORKDIR /app

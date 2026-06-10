@@ -1,7 +1,7 @@
-# Open AML Compliance Sidecar
+# Aria
 
-Open AML Compliance Sidecar is a public-alpha, sidecar-style investigation
-layer for bank AML alert streams.
+Aria is a public-alpha AML risk intelligence sidecar for agent-assisted alert
+investigation.
 
 The project is built around one hard constraint: a bank's core database is a
 regulated source system and must not be modified by agent outputs. The sidecar
@@ -10,6 +10,19 @@ separate sidecar database.
 
 Agents propose. Humans decide. Bank source systems remain controlled by the
 bank.
+
+## Current Status
+
+Aria is demo-ready and public-alpha, not production-ready banking software. It
+is intended for technical review, local evaluation, and early integration
+planning.
+
+- No autonomous alert dismissal.
+- No autonomous SAR filing.
+- No production compliance claim.
+- No claimed false-positive reduction without bank-specific evaluation.
+- Python import package: `compliance_agent`.
+- Python distribution metadata: `aria-aml`.
 
 ## What It Does
 
@@ -62,6 +75,25 @@ sidecar persistence, agent workflows, validation, and API behavior in one
 deployable shape while preserving internal boundaries that can be split into
 workers or services later. See
 [docs/adr-001-sidecar-monolith.md](docs/adr-001-sidecar-monolith.md).
+
+```mermaid
+flowchart LR
+    A["Existing bank systems<br/>alerts, KYC, transactions, cases"] --> B["Read-only adapters<br/>or bank-controlled MCP/API tools"]
+    B --> C["Aria sidecar<br/>bounded agent runtime"]
+    C --> D["Validation layer<br/>evidence-grounded claims"]
+    D --> E["Sidecar database<br/>evidence, traces, proposals"]
+    E --> F["Compliance officer<br/>approve, reject, escalate"]
+    F -. human decision .-> E
+```
+
+## Documentation
+
+- [How Aria Works](docs/how-it-works.md)
+- [Agent Loop](docs/agent-loop.md)
+- [Banking Integration](docs/banking-integration.md)
+- [Architecture](docs/architecture.md)
+- [Data Contract](docs/data-contract.md)
+- [Production Readiness](docs/production-readiness.md)
 
 ## Quick Start
 

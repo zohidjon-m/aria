@@ -1,4 +1,4 @@
-# Open AML Compliance Sidecar: optional local demo stack
+# Aria: optional local demo stack
 #
 #   docker compose up --build
 #
@@ -8,6 +8,8 @@
 # seeds the database automatically. LLM keys are optional (the agent falls back
 # to the heuristic planner); set them in a .env file to enable the LLM planner.
 # The Postgres credentials below are demo-only defaults for local evaluation.
+
+name: aria
 
 services:
   db:

@@ -1,10 +1,10 @@
-# Architecture
+# Aria Architecture
 
 ## Throughline
 
-The system is a sidecar. It reads bank source data, performs AML investigation
-work, validates generated claims against source evidence, and writes only to its
-own sidecar database.
+Aria is a sidecar. It reads bank source data, performs AML investigation work,
+validates generated claims against source evidence, and writes only to its own
+sidecar database.
 
 ```mermaid
 flowchart LR
@@ -21,6 +21,12 @@ flowchart LR
     H --> I["Sidecar DB"]
     I --> J["Human review UI or case system"]
 ```
+
+See also:
+
+- [How Aria Works](how-it-works.md)
+- [Agent Loop](agent-loop.md)
+- [Banking Integration](banking-integration.md)
 
 ## Boundaries
 
