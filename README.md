@@ -1,139 +1,112 @@
-# Aria
+# ARIA
 
-Aria is a public-alpha AML risk intelligence sidecar for agent-assisted alert
-investigation.
+**An auditable AI investigation sidecar for anti-money laundering teams.**
 
-The project is built around one hard constraint: a bank's core database is a
-regulated source system and must not be modified by agent outputs. The sidecar
-reads bank data through allowlisted adapters and stores generated artifacts in a
-separate sidecar database.
+[![CI](https://github.com/zohidjon-m/aria/actions/workflows/ci.yml/badge.svg)](https://github.com/zohidjon-m/aria/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Agents propose. Humans decide. Bank source systems remain controlled by the
-bank.
+ARIA turns transaction-monitoring alerts into evidence-linked investigation
+proposals. It brings together customer history, transaction patterns, screening
+results, and money-flow analysis so a compliance officer can review what the
+system found, how it reached its recommendation, and what still needs attention.
 
-## Current Status
+The project combines a Python agent runtime, a FastAPI backend, a reference
+Model Context Protocol (MCP) server, and a React analyst workbench. Agents read
+through controlled tools; generated evidence, traces, and proposals live in a
+separate sidecar store.
 
-Aria is demo-ready and public-alpha, not production-ready banking software. It
-is intended for technical review, local evaluation, and early integration
-planning.
+**Agents investigate and propose. Humans decide.**
 
-- No autonomous alert dismissal.
-- No autonomous SAR filing.
-- No production compliance claim.
-- No claimed false-positive reduction without bank-specific evaluation.
-- Python import package: `compliance_agent`.
-- Python distribution metadata: `aria-aml`.
+**Status:** Public alpha with a local demo. Production controls and bank-specific
+outcome evaluation remain work in progress.
 
-## What It Does
+[Try the demo](#try-the-demo) · [Architecture](#architecture) ·
+[Engineering decisions](#engineering-decisions) · [Code tour](#code-tour) ·
+[Tests](#tests-and-verification)
 
-The active implementation under `src/compliance_agent` provides:
+## The problem
 
-- Triage recommendations for incoming alerts.
-- Typology-specific investigation signals for structuring, velocity,
-  geography, sanctions, and PEP risk.
-- Human-readable customer risk scoring.
-- Draft SAR narratives for human review.
-- Factual validation before recommendations, scores, or drafts are exposed.
-- Append-only sidecar records for evidence, agent runs, validation reports,
-  recommendations, risk scores, SAR drafts, and human decisions.
+An alert is the start of an investigation. An analyst still needs to establish
+whether a transaction fits the customer's normal behavior, examine related
+activity, check risk signals, and document the decision. That work crosses
+multiple records and systems.
 
-This project does not autonomously dismiss alerts, file SARs, change officer
-permissions, or claim production false-positive reduction. It is not legal,
-regulatory, compliance, or model-risk advice. Banks must validate any deployment
-against their own BSA/AML, OFAC, privacy, security, model-risk, and governance
-requirements.
+ARIA adds an investigation and explanation layer around those sources. Its
+central engineering question is: **how can an agent help investigate an alert
+while keeping data access bounded, conclusions traceable, and final decisions
+with the officer?**
 
-## Architecture
+## What it does
 
-The public product surface is the sidecar package:
+| Workflow | What the reviewer receives |
+| --- | --- |
+| **Alert triage** | A recommendation to investigate, escalate, or review as a likely false positive, with reasons and evidence references. |
+| **Investigation** | Typology signals for structuring, velocity, geography, sanctions, and politically exposed persons (PEPs), plus bounded counterparty and money-flow tracing. |
+| **Customer risk scoring** | A proposed risk level with contributing factors; the live MCP workflow keeps the final score deterministic. |
+| **Suspicious Activity Report (SAR) drafting** | A narrative for human review; the live MCP workflow includes sentence-level evidence links and missing-field reporting. |
+| **Review and audit** | A workbench for inspecting proposals, tool calls, runtime events, and evidence, with separate officer decisions and explicit export records. |
 
-```text
-src/compliance_agent/
-  adapters/          Read-only bank adapters and sidecar persistence
-  agents/            Triage, investigation, risk, SAR, validation logic
-  api.py             FastAPI app factory
-  config.py          Environment-driven settings
-  domain.py          Shared domain objects
-  orchestrator.py    Agent workflow coordinator
+## Try the demo
+
+### Full analyst workbench
+
+Requires Docker with Compose. From the repository root:
+
+```bash
+docker compose up --build
 ```
 
-The repository also includes reference tooling for evaluation and demos:
+This starts PostgreSQL 16, seeds demo banking data on first launch, starts the
+FastAPI workbench backend, and serves the React UI.
 
-```text
-backend/             Optional workbench API for the demo UI
-frontend/            Optional Vite/React officer workbench demo
-mcp_server/          Reference MCP-style tool server
-contracts/           JSON schemas and tool catalogs
-docs/                Architecture, adoption, production-readiness notes
-sql/                 Sidecar schema
-scripts/             Smoke tests and demo entrypoints
-tests/               Unit and contract tests
-```
+- [Open the workbench](http://localhost:5173)
+- [Explore the API docs](http://localhost:8000/docs)
 
-The first version is a modular sidecar monolith. It keeps source adapters,
-sidecar persistence, agent workflows, validation, and API behavior in one
-deployable shape while preserving internal boundaries that can be split into
-workers or services later. See
-[docs/adr-001-sidecar-monolith.md](docs/adr-001-sidecar-monolith.md).
+Start in the alert queue, open an alert, and run agent triage. Inspect the
+recommendation, evidence, and execution trace. Customer and case pages expose
+risk-scoring and SAR-review workflows; live MCP actions require LLM configuration.
 
-```mermaid
-flowchart LR
-    A["Existing bank systems<br/>alerts, KYC, transactions, cases"] --> B["Read-only adapters<br/>or bank-controlled MCP/API tools"]
-    B --> C["Aria sidecar<br/>bounded agent runtime"]
-    C --> D["Validation layer<br/>evidence-grounded claims"]
-    D --> E["Sidecar database<br/>evidence, traces, proposals"]
-    E --> F["Compliance officer<br/>approve, reject, escalate"]
-    F -. human decision .-> E
-```
+The default heuristic triage path needs **no LLM API key**. Compose credentials
+are for local demo use. See [Docker setup](DOCKER.md) for configuration and
+troubleshooting.
 
-## Documentation
+### Core Python demo
 
-- [How Aria Works](docs/how-it-works.md)
-- [Agent Loop](docs/agent-loop.md)
-- [Banking Integration](docs/banking-integration.md)
-- [Architecture](docs/architecture.md)
-- [Data Contract](docs/data-contract.md)
-- [Production Readiness](docs/production-readiness.md)
-
-## Quick Start
-
-Create an environment and install the project:
+Run the sidecar against built-in fixtures without Docker, PostgreSQL, or an LLM
+key. Python 3.10+ is supported; CI uses Python 3.12.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -e . -r requirements.txt
+python scripts/smoke_test.py
 ```
 
-On Windows PowerShell:
+On Windows PowerShell, replace the first two commands with:
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e . -r requirements.txt
 ```
 
-Run the smoke test with the built-in demo source repository:
+The smoke test runs triage, risk scoring, and SAR drafting, validates the outputs,
+and persists them to a temporary SQLite sidecar database. Expected output
+(followed by the database path):
 
-```bash
-python scripts/smoke_test.py
+```text
+triage: escalate passed
+risk: critical passed
+sar: draft_for_human_review passed
 ```
 
-Run the tests:
-
-```bash
-python -m unittest discover -s tests
-```
-
-Run the sidecar API in demo mode:
+To explore the standalone API, use `DEMO_MODE=true` and `PLANNER_TYPE=heuristic`
+in your environment, then run:
 
 ```bash
 python scripts/run_demo_api.py --port 8000
 ```
 
-Then call:
+Open [the interactive API docs](http://localhost:8000/docs), or try:
 
 ```bash
 curl -X POST http://localhost:8000/api/alerts/1001/triage
@@ -141,93 +114,175 @@ curl -X POST http://localhost:8000/api/customers/501/risk-score
 curl -X POST http://localhost:8000/api/cases/9001/sar-draft
 ```
 
-## Demo Workbench
+Each response includes a `run_id`, a structured `result`, and a `validation`
+report. Retrieve the persisted record with `GET /api/sidecar/runs/{run_id}`.
 
-The optional full-stack demo starts Postgres, seeds demo data, launches the
-reference backend, and serves the React workbench:
+The standalone sidecar and Docker workbench are separate API entrypoints with
+different route sets. Run one at a time on port 8000.
 
-```bash
-docker compose up --build
+## Architecture
+
+ARIA uses a **modular sidecar monolith**: source access, agent execution,
+validation, and persistence have explicit internal boundaries without requiring
+a distributed agent platform for local evaluation.
+
+```mermaid
+flowchart LR
+    Sources["Bank source data<br/>alerts, customers, transactions, cases"]
+    Access["Controlled read access<br/>source adapters or reference MCP tools"]
+    Runtime["Bounded agent runtime<br/>plan, call tools, observe, revise"]
+    Validation["Evidence-reference validation"]
+    Store[("Sidecar store<br/>evidence, traces, proposals")]
+    Officer["Officer workbench<br/>review and decide"]
+
+    Sources --> Access --> Runtime --> Validation --> Store --> Officer
+    Officer -. "human decisions" .-> Store
 ```
 
-Then open:
+The default triage path proceeds in five stages:
 
-- Workbench UI: http://localhost:5173
-- API docs: http://localhost:8000/docs
-- Demo Postgres: `localhost:5433`
+1. **Establish context.** Load the alert, customer, and transaction context and
+   derive a bounded investigation scope.
+2. **Pre-screen.** Compare activity against behavioral baselines and risk
+   signals. Clear-cut cases produce a review proposal without entering the
+   planning loop.
+3. **Investigate ambiguity.** Route relevant typologies and run a bounded
+   plan–tool–observe–revise loop with a heuristic or optional LLM planner.
+4. **Validate references.** Check that structured claims and reasoning cite
+   evidence present in the run. Failed validation is recorded and flagged.
+5. **Persist for review.** Save the proposal, evidence, confidence factors, and
+   available execution trace. Officer decisions are recorded separately.
 
-The Compose credentials are for local demo use only. Do not reuse them in a
-pilot or production environment. See [DOCKER.md](DOCKER.md).
+The separate live MCP path supports triage, investigation, risk scoring, and SAR
+drafting through an LLM planner and a reference read-only tool server. Its
+explicit state machine records planning, tool execution, observations, hypothesis
+updates, validation, and terminal outcomes.
 
-## Bank Integration
+See the [architecture](docs/architecture.md), [agent loop](docs/agent-loop.md),
+and [sidecar design decision](docs/adr-001-sidecar-monolith.md) for more detail.
 
-For a real bank evaluation:
+## Engineering decisions
 
-1. Create a source-system user with read-only privileges only.
-2. Configure `BANK_SOURCE_DSN` with that user's connection string, or implement
-   a bank-owned adapter/API with equivalent read-only behavior.
-3. Configure `SIDECAR_DB_PATH` for local evaluation, or replace `SidecarStore`
-   with managed sidecar storage for a pilot.
-4. Map source tables, views, APIs, or event streams to the
-   `BankSourceRepository` methods.
-5. Keep generated records in sidecar storage. Do not write agent outputs back
-   to source systems unless the bank builds a separate governed integration
-   path with RBAC and audit.
+| Decision | Implementation and rationale |
+| --- | --- |
+| **Separate source data from agent artifacts** | The [PostgreSQL adapter](src/compliance_agent/adapters/postgres_source.py) uses read-only sessions and parameterized queries. The [sidecar store](src/compliance_agent/adapters/sidecar_store.py) persists generated records separately. Agents do not generate arbitrary SQL or write to bank source systems. |
+| **Use deterministic policy around agent planning** | The [pre-screen gate](src/compliance_agent/agents/pre_screen.py) handles clear-cut cases; the [typology router](src/compliance_agent/agents/typology_router.py) narrows tools for ambiguous investigations. Routine policy stays explicit and inspectable. |
+| **Enforce tool boundaries in code** | The [reference MCP service](mcp_server/service.py) validates typed requests, checks investigation scope, and bounds row counts, lookbacks, and graph traversal. Shared [contracts and JSON schemas](contracts/) make the integration boundary reviewable. |
+| **Make failure a first-class outcome** | The [live MCP runtime](src/compliance_agent/agents/live_mcp_demo.py) records terminal stop reasons. Tool denial, malformed output, missing evidence, timeout, and exhausted execution budgets produce a fail-safe investigation outcome. Critical signals trigger escalation. |
+| **Keep evidence and confidence inspectable** | The [validator](src/compliance_agent/agents/validation.py) checks source-reference coverage for claims and structured reasoning. The default triage [confidence engine](src/compliance_agent/agents/confidence.py) derives scores from runtime signals and records factor adjustments. |
+| **Preserve the review history** | Sidecar persistence records runs, tool observations, hypotheses, graph paths, and runtime versions. The [review API](backend/routes/agent_runs.py) and [React review panel](frontend/src/components/AgentReviewPanel.jsx) keep proposals, human decisions, and export records distinct. |
 
-The reference adapter assumes the schema described by
-[docs/data-contract.md](docs/data-contract.md) and the demo DDL in
-[`scheme.sql`](scheme.sql).
+The agent's read-only boundary applies to investigation tools. The reference
+workbench also has officer-initiated workflow writes with permission checks and
+audit records; those are separate from agent execution.
 
-## Configuration
-
-Environment variables are loaded from the process environment and, for local
-development, `.env`.
+## Code tour
 
 ```text
-DEMO_MODE=true
-BANK_SOURCE_DSN=postgresql://readonly_user:password@host:5432/bank_core
-SIDECAR_DB_PATH=data/sidecar.sqlite3
-TENANT_ID=demo-bank
-PLANNER_TYPE=heuristic
-LLM_API_KEY=
-LLM_MODEL=
-LLM_ENDPOINT=https://api.openai.com/v1/chat/completions
-LLM_TIMEOUT_SECONDS=30
-LLM_PROMPT_VERSION=phase1_live_mcp_agent_v1
-MCP_TOOL_REGISTRY_VERSION=phase1_reference_mcp_v1
-AGENT_POLICY_VERSION=phase1_reference_mcp_policy_v1
-RUNTIME_MAX_STEPS=6
-RUNTIME_MAX_TOOL_CALLS=6
-RUNTIME_MAX_ROWS=100
-RUNTIME_MAX_GRAPH_HOPS=4
-RUNTIME_TIMEOUT_SECONDS=60
-RUNTIME_MAX_COST_USD=1
+src/compliance_agent/   Core Python package: orchestration, agents, adapters, API
+backend/               Workbench API, officer permissions, review and audit routes
+frontend/              React workbench: alerts, customers, cases, graphs, traces
+mcp_server/            Reference read-only MCP server and demo fixtures
+contracts/             Generated JSON schemas and tool catalogs
+tests/                 Unit, workflow, contract, and failure-path tests
+sql/                   Sidecar schema
+docs/                  Architecture, integration, design decisions, readiness
 ```
 
-Use `PLANNER_TYPE=heuristic` for local, no-key evaluation. Set
-`PLANNER_TYPE=llm`, `LLM_API_KEY`, and `LLM_MODEL` only when you want the LLM
-planner path.
+**Stack:** Python · FastAPI · Pydantic · MCP · PostgreSQL · SQLite ·
+React 19 · Vite · Tailwind CSS · Docker Compose · GitHub Actions.
 
-## API
+For a focused code review, start with the
+[orchestrator](src/compliance_agent/orchestrator.py), follow the
+[bounded triage runtime](src/compliance_agent/agents/react_runtime.py), then
+inspect the [acceptance tests](tests/test_phase12_acceptance.py) and
+[live MCP workflow tests](tests/test_phase4_live_mcp_workflows.py).
 
-- `GET /health`
-- `POST /api/alerts/{alert_id}/triage`
-- `POST /api/alerts/{alert_id}/investigate`
-- `POST /api/customers/{customer_id}/risk-score`
-- `POST /api/cases/{case_id}/sar-draft`
-- `GET /api/sidecar/runs/{run_id}`
+The Python distribution is `aria-aml`; the import package is `compliance_agent`.
 
-All outputs include a validation report. A failed validation means the output
-must be blocked or reviewed as unsupported.
+## Tests and verification
 
-## Release Status
+Run the Python suite from the repository root:
 
-This repository is a public alpha. Before any bank pilot, review
-[docs/production-readiness.md](docs/production-readiness.md), run the full test
-suite, complete a threat model, and validate behavior against bank-specific
-historical alert data.
+```bash
+python -m unittest discover -s tests
+```
 
-## Contributing
+Coverage includes scope escape attempts, tool allowlists, graph bounds,
+malformed planner output, fail-safe stopping, evidence validation, confidence
+factors, trace persistence, officer permissions, and human-review workflows.
+LLM behavior is mocked in the default suite, so tests do not require cloud keys.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Frontend checks (Node.js 22 is used in CI):
+
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run build
+```
+
+[GitHub Actions](.github/workflows/ci.yml) runs the Python suite and frontend
+lint/build checks on pushes and pull requests. These checks verify implementation
+behavior; they do not establish AML detection accuracy or live provider quality.
+
+## Configuration and integration
+
+Start with [`.env.example`](.env.example). Key settings:
+
+- `DEMO_MODE`, `BANK_SOURCE_DSN`: built-in fixtures or PostgreSQL source data.
+- `SIDECAR_DB_PATH`: SQLite storage for generated artifacts.
+- `PLANNER_TYPE`: `heuristic` by default; `llm` enables LLM planning in the
+  standard triage runtime.
+- `LLM_API_KEY`, `LLM_MODEL`, `LLM_ENDPOINT`: provider settings.
+- `RUNTIME_MAX_*`, `RUNTIME_TIMEOUT_SECONDS`: bounds for live MCP workflows.
+
+The workbench exposes live workflows through `POST /api/agent-runs/live-mcp`.
+These require a configured source database and LLM provider; enabling them is
+separate from running the no-key heuristic demo. See the
+[live MCP implementation notes](docs/agent-intelligence-plan-v2-progress.md)
+and [Docker guide](DOCKER.md).
+
+For a bank evaluation, map source data to the
+[`BankSourceRepository`](src/compliance_agent/adapters/source.py) interface or
+implement bank-controlled MCP tools. Use a read-only source account, keep
+generated artifacts in sidecar storage, and use bank-governed integrations for
+system-of-record changes. See [banking integration](docs/banking-integration.md),
+[the data contract](docs/data-contract.md), and
+[the MCP contract](docs/mcp-contract-phase3.md).
+
+## Current limits and next steps
+
+ARIA is a public alpha for technical review and local evaluation. It does not
+autonomously dismiss alerts or file SARs. Bank-specific detection outcomes have
+not yet been benchmarked, and the project is not production-ready banking software.
+
+- **Evaluation:** Historical/synthetic replay, baseline comparisons, and
+  false-positive/false-negative analysis remain planned work.
+- **Production controls:** MCP authentication, stronger identity and tenant
+  isolation, prompt-injection testing, monitoring, and operational hardening
+  remain open. The demo officer selector is not production authentication.
+- **Validation:** Source-reference coverage does not prove every statement is
+  semantically correct. Broader contradiction, freshness, and completeness
+  checks require further work.
+- **Cost accounting:** The live runtime exposes a cost-budget field, but the
+  provider wrapper does not yet supply usage metadata for metered enforcement.
+- **External effects:** Executable bank-write MCP tools are not enabled.
+  Workbench export records are local audit artifacts, not completed bank-system
+  integrations or SAR submissions.
+
+See the [implementation status](docs/agent-intelligence-plan-v2-progress.md) and
+[production-readiness gates](docs/production-readiness.md) for remaining
+milestones and acceptance criteria.
+
+## Documentation and contributing
+
+[How it works](docs/how-it-works.md) ·
+[Architecture](docs/architecture.md) ·
+[Agent loop](docs/agent-loop.md) ·
+[Banking integration](docs/banking-integration.md) ·
+[Contributing](CONTRIBUTING.md) ·
+[Security](SECURITY.md) ·
+[Code of conduct](CODE_OF_CONDUCT.md)
+
+Licensed under [Apache 2.0](LICENSE). See [third-party notices](NOTICE.md).
